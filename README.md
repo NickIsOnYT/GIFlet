@@ -1,6 +1,8 @@
-# GIFlet
+# GIFlet - the local alternative to EZGIF
 
 A Windows desktop application for editing GIF images, built with WPF and ImageSharp.
+
+Fully made using [OpenCode](https://opencode.ai/download) (MiniMax M2.5 Free)
 
 ## Features
 
@@ -28,16 +30,7 @@ A Windows desktop application for editing GIF images, built with WPF and ImageSh
 
 ```bash
 dotnet build
-```
-
-## Running
-
-```bash
 dotnet run
 ```
 
 Or run the compiled executable from `bin/Debug/net10.0-windows/GIFlet.exe`
-
-## License
-
-MIT License
