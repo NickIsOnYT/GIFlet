@@ -2,7 +2,7 @@
 
 A Windows desktop application for editing GIF images, built with WPF and ImageSharp.
 
-Fully made using [OpenCode](https://opencode.ai/download) (MiniMax M2.5 Free)
+I'm not a programmer so this was fully made using [OpenCode](https://opencode.ai/download) (MiniMax M2.5 Free)
 
 If you want more controls when making a GIF, you can visit my other project: [Mif](https://github.com/NickIsOnYT/Mif)
 

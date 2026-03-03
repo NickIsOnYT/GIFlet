@@ -6,16 +6,16 @@ using System.Windows.Threading;
 
 namespace GIFlet;
 
-public class AnimatedImage : Image
-{
-    private DispatcherTimer? _timer;
-    private BitmapDecoder? _decoder;
-    private int _currentFrame;
-    private WriteableBitmap? _wb;
+    public class AnimatedImage : Image
+    {
+        private DispatcherTimer? _timer;
+        private BitmapDecoder? _decoder;
+        private int _currentFrame;
+        private WriteableBitmap? _wb;
 
-    public static readonly DependencyProperty SourcePathProperty =
-        DependencyProperty.Register(nameof(SourcePath), typeof(string), typeof(AnimatedImage),
-            new PropertyMetadata(null, OnSourcePathChanged));
+        public static readonly DependencyProperty SourcePathProperty =
+            DependencyProperty.Register(nameof(SourcePath), typeof(string), typeof(AnimatedImage),
+                new PropertyMetadata(null, OnSourcePathChanged));
 
     public string SourcePath
     {
@@ -35,6 +35,7 @@ public class AnimatedImage : Image
     {
         try
         {
+            _timer?.Stop();
             var uri = new Uri(path);
             _decoder = BitmapDecoder.Create(uri, BitmapCreateOptions.PreservePixelFormat, BitmapCacheOption.OnLoad);
             
@@ -71,9 +72,9 @@ public class AnimatedImage : Image
                 Source = new WriteableBitmap(frame);
             }
         }
-        catch
+        catch (Exception ex)
         {
-            // Not a GIF or error loading
+            // Remove error catching
         }
     }
 

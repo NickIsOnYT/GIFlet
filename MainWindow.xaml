@@ -66,7 +66,10 @@
                         <RowDefinition Height="Auto"/>
                     </Grid.RowDefinitions>
                     
-                    <Button Content="Open GIF" Click="SplitOpenGif_Click" Width="120" Height="35" HorizontalAlignment="Left" Margin="0,0,0,10"/>
+                    <StackPanel Orientation="Horizontal">
+                        <Button Content="Open GIF" Click="SplitOpenGif_Click" Width="120" Height="35" Margin="0,0,0,10"/>
+                        <Button Content="Clear" Click="SplitClear_Click" Width="80" Height="35" Margin="0,0,0,10"/>
+                    </StackPanel>
                     
                     <Grid Grid.Row="1">
                         <Grid.ColumnDefinitions>
@@ -135,7 +138,10 @@
                         <RowDefinition Height="Auto"/>
                     </Grid.RowDefinitions>
                     
-                    <Button Content="Open GIF" Click="ReverseOpenGif_Click" Width="120" Height="35" HorizontalAlignment="Left" Margin="0,0,0,10"/>
+                    <StackPanel Orientation="Horizontal">
+                        <Button Content="Open GIF" Click="ReverseOpenGif_Click" Width="120" Height="35" Margin="0,0,0,10"/>
+                        <Button Content="Clear" Click="ReverseClear_Click" Width="80" Height="35" Margin="0,0,0,10"/>
+                    </StackPanel>
                     
                     <GroupBox Grid.Row="1" Header="Preview">
                         <local:AnimatedImage x:Name="ReversePreviewImage" Stretch="Uniform"/>
@@ -154,7 +160,10 @@
                         <RowDefinition Height="Auto"/>
                     </Grid.RowDefinitions>
                     
-                    <Button Content="Open GIF" Click="SpeedOpenGif_Click" Width="120" Height="35" HorizontalAlignment="Left" Margin="0,0,0,10"/>
+                    <StackPanel Orientation="Horizontal">
+                        <Button Content="Open GIF" Click="SpeedOpenGif_Click" Width="120" Height="35" Margin="0,0,0,10"/>
+                        <Button Content="Clear" Click="SpeedClear_Click" Width="80" Height="35" Margin="0,0,0,10"/>
+                    </StackPanel>
                     
                     <Grid Grid.Row="1">
                         <Grid.RowDefinitions>
@@ -191,7 +200,10 @@
                         <RowDefinition Height="Auto"/>
                     </Grid.RowDefinitions>
                     
-                    <Button Content="Open GIF" Click="OptimizeOpenGif_Click" Width="120" Height="35" HorizontalAlignment="Left" Margin="0,0,0,10"/>
+                    <StackPanel Orientation="Horizontal">
+                        <Button Content="Open GIF" Click="OptimizeOpenGif_Click" Width="120" Height="35" Margin="0,0,0,10"/>
+                        <Button Content="Clear" Click="OptimizeClear_Click" Width="80" Height="35" Margin="0,0,0,10"/>
+                    </StackPanel>
                     
                     <Grid Grid.Row="1">
                         <Grid.RowDefinitions>
@@ -229,7 +241,10 @@
                         <RowDefinition Height="Auto"/>
                     </Grid.RowDefinitions>
                     
-                    <Button Content="Open GIF" Click="CropOpenGif_Click" Width="120" Height="35" HorizontalAlignment="Left" Margin="0,0,0,10"/>
+                    <StackPanel Orientation="Horizontal">
+                        <Button Content="Open GIF" Click="CropOpenGif_Click" Width="120" Height="35" Margin="0,0,0,10"/>
+                        <Button Content="Clear" Click="CropClear_Click" Width="80" Height="35" Margin="0,0,0,10"/>
+                    </StackPanel>
                     
                     <Grid Grid.Row="1">
                         <Grid.RowDefinitions>
@@ -267,7 +282,10 @@
                         <RowDefinition Height="Auto"/>
                     </Grid.RowDefinitions>
                     
-                    <Button Content="Open GIF" Click="ResizeOpenGif_Click" Width="120" Height="35" HorizontalAlignment="Left" Margin="0,0,0,10"/>
+                    <StackPanel Orientation="Horizontal">
+                        <Button Content="Open GIF" Click="ResizeOpenGif_Click" Width="120" Height="35" Margin="0,0,0,10"/>
+                        <Button Content="Clear" Click="ResizeClear_Click" Width="80" Height="35" Margin="0,0,0,10"/>
+                    </StackPanel>
                     
                     <Grid Grid.Row="1">
                         <Grid.RowDefinitions>
@@ -305,7 +323,10 @@
                         <RowDefinition Height="Auto"/>
                     </Grid.RowDefinitions>
                     
-                    <Button Content="Open GIF" Click="RotateOpenGif_Click" Width="120" Height="35" HorizontalAlignment="Left" Margin="0,0,0,10"/>
+                    <StackPanel Orientation="Horizontal">
+                        <Button Content="Open GIF" Click="RotateOpenGif_Click" Width="120" Height="35" Margin="0,0,0,10"/>
+                        <Button Content="Clear" Click="RotateClear_Click" Width="80" Height="35" Margin="0,0,0,10"/>
+                    </StackPanel>
                     
                     <Grid Grid.Row="1">
                         <Grid.RowDefinitions>
@@ -346,7 +367,10 @@
                         <RowDefinition Height="Auto"/>
                     </Grid.RowDefinitions>
                     
-                    <Button Content="Open GIF" Click="EffectsOpenGif_Click" Width="120" Height="35" HorizontalAlignment="Left" Margin="0,0,0,10"/>
+                    <StackPanel Orientation="Horizontal">
+                        <Button Content="Open GIF" Click="EffectsOpenGif_Click" Width="120" Height="35" Margin="0,0,0,10"/>
+                        <Button Content="Clear" Click="EffectsClear_Click" Width="80" Height="35" Margin="0,0,0,10"/>
+                    </StackPanel>
                     
                     <Grid Grid.Row="1">
                         <Grid.RowDefinitions>
@@ -387,7 +411,10 @@
                         <RowDefinition Height="Auto"/>
                     </Grid.RowDefinitions>
                     
-                    <Button Content="Open GIF" Click="ColorOpenGif_Click" Width="120" Height="35" HorizontalAlignment="Left" Margin="0,0,0,10"/>
+                    <StackPanel Orientation="Horizontal">
+                        <Button Content="Open GIF" Click="ColorOpenGif_Click" Width="120" Height="35" Margin="0,0,0,10"/>
+                        <Button Content="Clear" Click="ColorClear_Click" Width="80" Height="35" Margin="0,0,0,10"/>
+                    </StackPanel>
                     
                     <Grid Grid.Row="1">
                         <Grid.RowDefinitions>
@@ -445,7 +472,10 @@
                         <RowDefinition Height="Auto"/>
                     </Grid.RowDefinitions>
                     
-                    <Button Content="Open GIF" Click="TransparencyOpenGif_Click" Width="120" Height="35" HorizontalAlignment="Left" Margin="0,0,0,10"/>
+                    <StackPanel Orientation="Horizontal">
+                        <Button Content="Open GIF" Click="TransparencyOpenGif_Click" Width="120" Height="35" Margin="0,0,0,10"/>
+                        <Button Content="Clear" Click="TransparencyClear_Click" Width="80" Height="35" Margin="0,0,0,10"/>
+                    </StackPanel>
                     
                     <Grid Grid.Row="1">
                         <Grid.RowDefinitions>
@@ -479,7 +509,10 @@
                         <RowDefinition Height="Auto"/>
                     </Grid.RowDefinitions>
                     
-                    <Button Content="Open GIF" Click="BorderOpenGif_Click" Width="120" Height="35" HorizontalAlignment="Left" Margin="0,0,0,10"/>
+                    <StackPanel Orientation="Horizontal">
+                        <Button Content="Open GIF" Click="BorderOpenGif_Click" Width="120" Height="35" Margin="0,0,0,10"/>
+                        <Button Content="Clear" Click="BorderClear_Click" Width="80" Height="35" Margin="0,0,0,10"/>
+                    </StackPanel>
                     
                     <Grid Grid.Row="1">
                         <Grid.RowDefinitions>
@@ -528,7 +561,10 @@
                         <RowDefinition Height="*"/>
                     </Grid.RowDefinitions>
                     
-                    <Button Content="Open GIF" Click="DebugOpenGif_Click" Width="120" Height="35" HorizontalAlignment="Left" Margin="0,0,0,10"/>
+                    <StackPanel Orientation="Horizontal">
+                        <Button Content="Open GIF" Click="DebugOpenGif_Click" Width="120" Height="35" Margin="0,0,0,10"/>
+                        <Button Content="Clear" Click="DebugClear_Click" Width="80" Height="35" Margin="0,0,0,10"/>
+                    </StackPanel>
                     
                     <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
                         <TextBlock x:Name="DebugOutput" Text="" FontFamily="Consolas" FontSize="12" Foreground="White"/>

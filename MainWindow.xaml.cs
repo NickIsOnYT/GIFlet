@@ -204,6 +204,13 @@ public partial class MainWindow : Window
         });
     }
 
+    private void SplitClear_Click(object sender, RoutedEventArgs e)
+    {
+        _currentGifPath = null;
+        SplitOriginalImage.Source = null;
+        SplitFramesList.ItemsSource = null;
+    }
+
     private async void SplitExtractFrames_Click(object sender, RoutedEventArgs e)
     {
         if (string.IsNullOrEmpty(_currentGifPath)) return;
@@ -345,6 +352,12 @@ public partial class MainWindow : Window
         });
     }
 
+    private void ReverseClear_Click(object sender, RoutedEventArgs e)
+    {
+        _currentGifPath = null;
+        ReversePreviewImage.Source = null;
+    }
+
     private async void ReverseGif_Click(object sender, RoutedEventArgs e)
     {
         if (string.IsNullOrEmpty(_currentGifPath)) return;
@@ -388,6 +401,12 @@ public partial class MainWindow : Window
             _currentGifPath = path;
             SpeedPreviewImage.SourcePath = path;
         });
+    }
+
+    private void SpeedClear_Click(object sender, RoutedEventArgs e)
+    {
+        _currentGifPath = null;
+        SpeedPreviewImage.Source = null;
     }
 
     private async void SpeedApply_Click(object sender, RoutedEventArgs e)
@@ -436,6 +455,12 @@ public partial class MainWindow : Window
             _currentGifPath = path;
             OptimizePreviewImage.SourcePath = path;
         });
+    }
+
+    private void OptimizeClear_Click(object sender, RoutedEventArgs e)
+    {
+        _currentGifPath = null;
+        OptimizePreviewImage.Source = null;
     }
 
     private async void OptimizeGif_Click(object sender, RoutedEventArgs e)
@@ -514,6 +539,14 @@ public partial class MainWindow : Window
         });
     }
 
+    private void CropClear_Click(object sender, RoutedEventArgs e)
+    {
+        _currentGifPath = null;
+        CropPreviewImage.Source = null;
+        CropWidth.Text = "0";
+        CropHeight.Text = "0";
+    }
+
     private async void CropGif_Click(object sender, RoutedEventArgs e)
     {
         if (string.IsNullOrEmpty(_currentGifPath)) return;
@@ -564,6 +597,12 @@ public partial class MainWindow : Window
         });
     }
 
+    private void ResizeClear_Click(object sender, RoutedEventArgs e)
+    {
+        _currentGifPath = null;
+        ResizePreviewImage.Source = null;
+    }
+
     private async void ResizeGif_Click(object sender, RoutedEventArgs e)
     {
         if (string.IsNullOrEmpty(_currentGifPath)) return;
@@ -612,6 +651,12 @@ public partial class MainWindow : Window
             _currentGifPath = path;
             RotatePreviewImage.SourcePath = path;
         });
+    }
+
+    private void RotateClear_Click(object sender, RoutedEventArgs e)
+    {
+        _currentGifPath = null;
+        RotatePreviewImage.Source = null;
     }
 
     private async void RotateApply_Click(object sender, RoutedEventArgs e)
@@ -681,6 +726,12 @@ public partial class MainWindow : Window
         });
     }
 
+    private void EffectsClear_Click(object sender, RoutedEventArgs e)
+    {
+        _currentGifPath = null;
+        EffectsPreviewImage.Source = null;
+    }
+
     private async void EffectsApply_Click(object sender, RoutedEventArgs e)
     {
         if (string.IsNullOrEmpty(_currentGifPath)) return;
@@ -748,6 +799,15 @@ public partial class MainWindow : Window
             _currentGifPath = path;
             ColorPreviewImage.SourcePath = path;
         });
+    }
+
+    private void ColorClear_Click(object sender, RoutedEventArgs e)
+    {
+        _currentGifPath = null;
+        ColorPreviewImage.Source = null;
+        ColorBrightness.Value = 100;
+        ColorContrast.Value = 100;
+        ColorSaturation.Value = 100;
     }
 
     private void ColorSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
@@ -821,6 +881,13 @@ public partial class MainWindow : Window
         });
     }
 
+    private void TransparencyClear_Click(object sender, RoutedEventArgs e)
+    {
+        _currentGifPath = null;
+        TransparencyPreviewImage.Source = null;
+        TransparencyAmount.Value = 0;
+    }
+
     private void TransparencySlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
     {
         if (TransparencyAmountVal == null) return;
@@ -873,6 +940,14 @@ public partial class MainWindow : Window
             _currentGifPath = path;
             BorderPreviewImage.SourcePath = path;
         });
+    }
+
+    private void BorderClear_Click(object sender, RoutedEventArgs e)
+    {
+        _currentGifPath = null;
+        BorderPreviewImage.Source = null;
+        BorderWidth.Text = "10";
+        BorderColor.SelectedIndex = 0;
     }
 
     private async void BorderApply_Click(object sender, RoutedEventArgs e)
@@ -975,5 +1050,11 @@ public partial class MainWindow : Window
             
             DebugOutput.Text = output.ToString();
         });
+    }
+
+    private void DebugClear_Click(object sender, RoutedEventArgs e)
+    {
+        _currentGifPath = null;
+        DebugOutput.Text = "";
     }
 }
