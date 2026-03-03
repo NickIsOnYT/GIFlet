@@ -1,4 +1,4 @@
-# GIFlet - the local alternative to EZGIF
+# GIFlet - the offline alternative to EZGIF
 
 A Windows desktop application for editing GIF images, built with WPF and ImageSharp.
 
@@ -40,3 +40,7 @@ dotnet run
 ```
 
 Or run the compiled executable from `bin/Debug/net10.0-windows/GIFlet.exe`
+
+## Preview
+
+![GIFlet2.1](https://github.com/NickIsOnYT/GIFlet/blob/main/Logo/Screenshot%20GIFlet.png)
