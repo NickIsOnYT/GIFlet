@@ -40,17 +40,16 @@
                             <ColumnDefinition Width="100"/>
                             <ColumnDefinition Width="Auto"/>
                             <ColumnDefinition Width="100"/>
+                            <ColumnDefinition Width="Auto"/>
                         </Grid.ColumnDefinitions>
                         <TextBlock Text="Frame Delay (ms):" VerticalAlignment="Center" Margin="0,0,10,0"/>
                         <TextBox x:Name="CreateFrameDelay" Grid.Column="1" Text="100" VerticalAlignment="Center"/>
                         <TextBlock Grid.Column="2" Text="Loop:" VerticalAlignment="Center" Margin="20,0,10,0"/>
-                        <ComboBox x:Name="CreateLoopCount" Grid.Column="3" SelectedIndex="0" VerticalAlignment="Center">
-                            <ComboBoxItem Content="Infinite"/>
-                            <ComboBoxItem Content="1"/>
-                            <ComboBoxItem Content="2"/>
-                            <ComboBoxItem Content="3"/>
-                            <ComboBoxItem Content="5"/>
-                        </ComboBox>
+                        <TextBox x:Name="CreateLoopCount" Grid.Column="3" Text="0" VerticalAlignment="Center"/>
+                        <StackPanel Grid.Column="4" Orientation="Horizontal" Margin="20,0,0,0">
+                            <CheckBox x:Name="CreateNoStackFrames" Content="No Stacking" VerticalAlignment="Center"/>
+                            <CheckBox x:Name="CreateFirstFrameBg" Content="First Frame as BG" VerticalAlignment="Center" Margin="15,0,0,0"/>
+                        </StackPanel>
                     </Grid>
                     
                     <Button Grid.Row="3" Content="Create GIF" Click="CreateGif_Click" Height="45" FontSize="14"/>

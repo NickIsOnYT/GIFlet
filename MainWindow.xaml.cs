@@ -156,7 +156,9 @@ public partial class MainWindow : Window
         ShowSaveDialog(async (path) =>
         {
             var delay = int.Parse(CreateFrameDelay.Text);
-            var loop = CreateLoopCount.SelectedIndex == 0 ? 0 : CreateLoopCount.SelectedIndex;
+            var loop = int.TryParse(CreateLoopCount.Text, out var loopVal) ? loopVal : 0;
+            var noStack = CreateNoStackFrames.IsChecked == true;
+            var firstFrameBg = CreateFirstFrameBg.IsChecked == true;
 
             var frames = new List<Image<Rgba32>>();
 
@@ -175,10 +177,19 @@ public partial class MainWindow : Window
                 var gifMeta = output.Metadata.GetGifMetadata();
                 gifMeta.RepeatCount = (ushort)loop;
 
-                foreach (var frameImg in frames)
+                for (int i = 0; i < frames.Count; i++)
                 {
-                    using var resized = frameImg.Clone(ctx => ctx.Resize(width, height));
-                    GetGifFrameMetadata(resized.Frames.RootFrame).FrameDelay = delay / 10;
+                    using var resized = frames[i].Clone(ctx => ctx.Resize(width, height));
+                    var frameMeta = GetGifFrameMetadata(resized.Frames.RootFrame);
+                    frameMeta.FrameDelay = delay / 10;
+                    if (noStack)
+                    {
+                        frameMeta.DisposalMethod = GifDisposalMethod.RestoreToBackground;
+                    }
+                    else if (firstFrameBg && i == 0)
+                    {
+                        frameMeta.DisposalMethod = GifDisposalMethod.NotDispose;
+                    }
                     output.Frames.AddFrame(resized.Frames.RootFrame);
                 }
 
