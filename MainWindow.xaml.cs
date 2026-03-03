@@ -1057,4 +1057,395 @@ public partial class MainWindow : Window
         _currentGifPath = null;
         DebugOutput.Text = "";
     }
+
+    private string? _currentVideoPath;
+
+    private void VideoToGifOpen_Click(object sender, RoutedEventArgs e)
+    {
+        var dialog = new OpenFileDialog
+        {
+            Filter = "Video Files|*.mp4;*.avi;*.mov;*.mkv;*.wmv;*.webm|All Files|*.*"
+        };
+        if (dialog.ShowDialog() == true)
+        {
+            _currentVideoPath = dialog.FileName;
+            try
+            {
+                VideoPreview.Source = new Uri(_currentVideoPath);
+                VideoPreview.Play();
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Error loading video: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+    }
+
+    private void VideoToGifClear_Click(object sender, RoutedEventArgs e)
+    {
+        _currentVideoPath = null;
+        VideoPreview.Stop();
+        VideoPreview.Source = null;
+    }
+
+    private async void VideoToGifConvert_Click(object sender, RoutedEventArgs e)
+    {
+        if (string.IsNullOrEmpty(_currentVideoPath)) return;
+
+        var dialog = new SaveFileDialog
+        {
+            Filter = "GIF Image|*.gif",
+            DefaultExt = "gif"
+        };
+        if (dialog.ShowDialog() != true) return;
+
+        VideoPreview.Stop();
+
+        try
+        {
+            var startTime = double.Parse(VideoStartTime.Text);
+            var duration = double.Parse(VideoDuration.Text);
+            var fps = int.Parse(VideoFps.Text);
+            var width = int.Parse(VideoWidth.Text);
+
+            var tempDir = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "giflet_video_" + Guid.NewGuid());
+            Directory.CreateDirectory(tempDir);
+
+            var args = $"-y -ss {startTime} -t {duration} -i \"{_currentVideoPath}\" -vf \"fps={fps},scale={width}:-1:flags=lanczos,split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse\" -loop 0 \"{tempDir}\\output.gif\"";
+            
+            var ffmpegPath = FindFfmpeg();
+            if (ffmpegPath == null)
+            {
+                MessageBox.Show("FFmpeg not found. Please install FFmpeg and ensure it's in your PATH.", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                Directory.Delete(tempDir, true);
+                return;
+            }
+
+            var process = new System.Diagnostics.Process
+            {
+                StartInfo = new System.Diagnostics.ProcessStartInfo
+                {
+                    FileName = ffmpegPath,
+                    Arguments = args,
+                    UseShellExecute = false,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    CreateNoWindow = true
+                }
+            };
+            process.Start();
+            await process.WaitForExitAsync();
+
+            if (System.IO.File.Exists(System.IO.Path.Combine(tempDir, "output.gif")))
+            {
+                System.IO.File.Copy(System.IO.Path.Combine(tempDir, "output.gif"), dialog.FileName, true);
+                MessageBox.Show("GIF created successfully!", "Success", MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+            else
+            {
+                var error = await process.StandardError.ReadToEndAsync();
+                MessageBox.Show($"Error creating GIF: {error}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+
+            Directory.Delete(tempDir, true);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"Error: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
+    private string? FindFfmpeg()
+    {
+        var paths = new[]
+        {
+            "ffmpeg",
+            "ffmpeg.exe",
+            System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "ffmpeg.exe"),
+            @"C:\ffmpeg\bin\ffmpeg.exe",
+            @"C:\Program Files\ffmpeg\bin\ffmpeg.exe"
+        };
+
+        foreach (var path in paths)
+        {
+            try
+            {
+                var psi = new System.Diagnostics.ProcessStartInfo
+                {
+                    FileName = path,
+                    Arguments = "-version",
+                    UseShellExecute = false,
+                    RedirectStandardOutput = true,
+                    CreateNoWindow = true
+                };
+                var proc = System.Diagnostics.Process.Start(psi);
+                proc?.WaitForExit(3000);
+                if (proc?.ExitCode == 0) return path;
+            }
+            catch { }
+        }
+        return null;
+    }
+
+    private void GifToVideoOpen_Click(object sender, RoutedEventArgs e)
+    {
+        ShowOpenDialog("GIF Image|*.gif", path =>
+        {
+            _currentGifPath = path;
+            GifToVideoPreview.SourcePath = path;
+        });
+    }
+
+    private void GifToVideoClear_Click(object sender, RoutedEventArgs e)
+    {
+        _currentGifPath = null;
+        GifToVideoPreview.SourcePath = null;
+    }
+
+    private async void GifToVideoExport_Click(object sender, RoutedEventArgs e)
+    {
+        if (string.IsNullOrEmpty(_currentGifPath)) return;
+
+        var formats = new[] { "mp4", "webm", "avi" };
+        var format = formats[GifToVideoFormat.SelectedIndex];
+        var qualities = new[] { "28", "35", "50" };
+        var quality = qualities[GifToVideoQuality.SelectedIndex];
+
+        var dialog = new SaveFileDialog
+        {
+            Filter = $"{format.ToUpper()} Video|*.{format}",
+            DefaultExt = format
+        };
+        if (dialog.ShowDialog() != true) return;
+
+        try
+        {
+            var ffmpegPath = FindFfmpeg();
+            if (ffmpegPath == null)
+            {
+                MessageBox.Show("FFmpeg not found. Please install FFmpeg and ensure it's in your PATH.", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                return;
+            }
+
+            var args = $"-y -i \"{_currentGifPath}\" -c:v libx264 -crf {quality} -pix_fmt yuv420p \"{dialog.FileName}\"";
+            
+            var process = new System.Diagnostics.Process
+            {
+                StartInfo = new System.Diagnostics.ProcessStartInfo
+                {
+                    FileName = ffmpegPath,
+                    Arguments = args,
+                    UseShellExecute = false,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    CreateNoWindow = true
+                }
+            };
+            process.Start();
+            await process.WaitForExitAsync();
+
+            if (System.IO.File.Exists(dialog.FileName))
+            {
+                MessageBox.Show("Video exported successfully!", "Success", MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+            else
+            {
+                var error = await process.StandardError.ReadToEndAsync();
+                MessageBox.Show($"Error exporting video: {error}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"Error: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
+    private string? _currentSpriteSheetPath;
+
+    private void SpriteToGifOpen_Click(object sender, RoutedEventArgs e)
+    {
+        ShowOpenDialog("Image Files|*.png;*.jpg;*.jpeg;*.bmp", path =>
+        {
+            _currentSpriteSheetPath = path;
+            var bitmap = new BitmapImage(new Uri(path));
+            SpriteToGifPreview.Source = bitmap;
+        });
+    }
+
+    private void SpriteToGifClear_Click(object sender, RoutedEventArgs e)
+    {
+        _currentSpriteSheetPath = null;
+        SpriteToGifPreview.Source = null;
+    }
+
+    private async void SpriteToGifCreate_Click(object sender, RoutedEventArgs e)
+    {
+        if (string.IsNullOrEmpty(_currentSpriteSheetPath)) return;
+
+        ShowSaveDialog(savePath =>
+        {
+            var columns = int.Parse(SpriteColumns.Text);
+            var rows = int.Parse(SpriteRows.Text);
+            var frameWidth = int.Parse(SpriteFrameWidth.Text);
+            var frameHeight = int.Parse(SpriteFrameHeight.Text);
+
+            using var image = SixLabors.ImageSharp.Image.Load<Rgba32>(_currentSpriteSheetPath);
+            
+            if (frameWidth == 0) frameWidth = image.Width / columns;
+            if (frameHeight == 0) frameHeight = image.Height / rows;
+
+            var gif = new SixLabors.ImageSharp.Image<Rgba32>(frameWidth, rows * frameHeight);
+            var frameDelay = int.Parse(VideoDuration.Text);
+            if (frameDelay == 0) frameDelay = 100;
+
+            var gifMeta = gif.Metadata.GetGifMetadata();
+            gifMeta.RepeatCount = 0;
+
+            for (int y = 0; y < rows; y++)
+            {
+                for (int x = 0; x < columns; x++)
+                {
+                    var frame = image.Clone(ctx => ctx.Crop(new ImageSharpRect(x * frameWidth, y * frameHeight, frameWidth, frameHeight)));
+                    var frameMeta = frame.Frames.RootFrame.Metadata.GetGifMetadata();
+                    frameMeta.FrameDelay = frameDelay / 10;
+                    gif.Frames.AddFrame(frame.Frames.RootFrame);
+                }
+            }
+
+            gif.Frames.RemoveFrame(0);
+            gif.SaveAsGif(savePath);
+        });
+    }
+
+    private async void SpriteToGifPreviewAnim_Click(object sender, RoutedEventArgs e)
+    {
+        if (string.IsNullOrEmpty(_currentSpriteSheetPath)) return;
+
+        var columns = int.Parse(SpriteColumns.Text);
+        var rows = int.Parse(SpriteRows.Text);
+        var frameWidth = int.Parse(SpriteFrameWidth.Text);
+        var frameHeight = int.Parse(SpriteFrameHeight.Text);
+
+        using var image = SixLabors.ImageSharp.Image.Load<Rgba32>(_currentSpriteSheetPath);
+        
+        if (frameWidth == 0) frameWidth = image.Width / columns;
+        if (frameHeight == 0) frameHeight = image.Height / rows;
+
+        var tempPath = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "giflet_preview.gif");
+        var frameDelay = 100;
+
+        var gif = new SixLabors.ImageSharp.Image<Rgba32>(frameWidth, frameHeight);
+        var gifMeta = gif.Metadata.GetGifMetadata();
+        gifMeta.RepeatCount = 0;
+
+        for (int y = 0; y < rows; y++)
+        {
+            for (int x = 0; x < columns; x++)
+            {
+                var frame = image.Clone(ctx => ctx.Crop(new ImageSharpRect(x * frameWidth, y * frameHeight, frameWidth, frameHeight)));
+                var frameMeta = frame.Frames.RootFrame.Metadata.GetGifMetadata();
+                frameMeta.FrameDelay = frameDelay / 10;
+                gif.Frames.AddFrame(frame.Frames.RootFrame);
+            }
+        }
+
+        gif.Frames.RemoveFrame(0);
+        gif.SaveAsGif(tempPath);
+
+        await Dispatcher.InvokeAsync(() =>
+        {
+            SpriteToGifPreview.Source = new BitmapImage(new Uri(tempPath));
+        });
+    }
+
+    private string? _currentGifForSprite;
+    private List<BitmapImage> _gifFrames = new();
+
+    private void GifToSpriteOpen_Click(object sender, RoutedEventArgs e)
+    {
+        ShowOpenDialog("GIF Image|*.gif", path =>
+        {
+            _currentGifForSprite = path;
+            LoadGifFrames(path);
+            if (_gifFrames.Count > 0)
+            {
+                GifToSpritePreview.Source = _gifFrames[0];
+            }
+        });
+    }
+
+    private void LoadGifFrames(string path)
+    {
+        _gifFrames.Clear();
+        try
+        {
+            var decoder = BitmapDecoder.Create(new Uri(path), BitmapCreateOptions.PreservePixelFormat, BitmapCacheOption.OnLoad);
+            foreach (var frame in decoder.Frames)
+            {
+                var bitmap = new WriteableBitmap(frame);
+                var image = new BitmapImage();
+                using var ms = new MemoryStream();
+                var encoder = new PngBitmapEncoder();
+                encoder.Frames.Add(BitmapFrame.Create(bitmap));
+                encoder.Save(ms);
+                ms.Position = 0;
+                image.BeginInit();
+                image.StreamSource = ms;
+                image.CacheOption = BitmapCacheOption.OnLoad;
+                image.EndInit();
+                image.Freeze();
+                _gifFrames.Add(image);
+            }
+        }
+        catch { }
+    }
+
+    private void GifToSpriteClear_Click(object sender, RoutedEventArgs e)
+    {
+        _currentGifForSprite = null;
+        _gifFrames.Clear();
+        GifToSpritePreview.Source = null;
+    }
+
+    private void GifToSpriteExport_Click(object sender, RoutedEventArgs e)
+    {
+        if (_gifFrames.Count == 0) return;
+
+        ShowSaveDialog(savePath =>
+        {
+            var columns = int.Parse(GifSpriteColumns.Text);
+            var padding = int.Parse(GifSpritePadding.Text);
+
+            var frameWidth = _gifFrames[0].PixelWidth;
+            var frameHeight = _gifFrames[0].PixelHeight;
+            var rows = (int)Math.Ceiling((double)_gifFrames.Count / columns);
+
+            var spriteWidth = columns * frameWidth + (columns + 1) * padding;
+            var spriteHeight = rows * frameHeight + (rows + 1) * padding;
+
+            using var sprite = new SixLabors.ImageSharp.Image<Rgba32>(spriteWidth, spriteHeight);
+
+            for (int i = 0; i < _gifFrames.Count; i++)
+            {
+                var col = i % columns;
+                var row = i / columns;
+                var x = padding + col * (frameWidth + padding);
+                var y = padding + row * (frameHeight + padding);
+
+                var framePath = System.IO.Path.Combine(System.IO.Path.GetTempPath(), $"frame_{i}.png");
+                using (var fileStream = new FileStream(framePath, FileMode.Create))
+                {
+                    var encoder = new PngBitmapEncoder();
+                    encoder.Frames.Add(BitmapFrame.Create(_gifFrames[i]));
+                    encoder.Save(fileStream);
+                }
+
+                using var frameImage = SixLabors.ImageSharp.Image.Load<Rgba32>(framePath);
+                sprite.Mutate(ctx => ctx.DrawImage(frameImage, new ImageSharpPoint(x, y), 1f));
+                File.Delete(framePath);
+            }
+
+            sprite.Save(savePath);
+        });
+    }
 }
