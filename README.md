@@ -24,10 +24,10 @@ If you want more controls when making a GIF, you can visit my other project: [Mi
 - **GIF Debug** - View detailed information about GIF files (frames, delays, dimensions, etc.)
 
 todo:
-add video to gif
-add export video (via ffmpeg)
-sprite sheet to gif (& vice-versa)
-apng maker
+add video to gif,
+add export video (via ffmpeg),
+sprite sheet to gif (& vice-versa),
+apng maker.
 
 ## Requirements
 
