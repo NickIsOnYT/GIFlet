@@ -746,55 +746,6 @@
                     <Button Grid.Row="3" Content="Export Sprite Sheet" Click="GifToSpriteExport_Click" Height="45" FontSize="14"/>
                 </Grid>
             </TabItem>
-
-            <!-- APNG Maker -->
-            <TabItem Header="APNG Maker">
-                <Grid Margin="10">
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto"/>
-                        <RowDefinition Height="*"/>
-                        <RowDefinition Height="Auto"/>
-                        <RowDefinition Height="Auto"/>
-                    </Grid.RowDefinitions>
-                    
-                    <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,10">
-                        <Button Content="Add Images" Click="ApngAddImages_Click" Width="120" Margin="0,0,10,0"/>
-                        <Button Content="Clear All" Click="ApngClearImages_Click" Width="100" Height="35"/>
-                    </StackPanel>
-                    
-                    <ListBox x:Name="ApngImageList" Grid.Row="1" SelectionMode="Extended" Margin="0,0,0,10">
-                        <ListBox.ItemTemplate>
-                            <DataTemplate>
-                                <StackPanel Orientation="Horizontal">
-                                    <Image Source="{Binding}" Width="60" Height="60" Stretch="Uniform" Margin="5"/>
-                                    <TextBlock Text="{Binding}" VerticalAlignment="Center" Margin="5,0"/>
-                                </StackPanel>
-                            </DataTemplate>
-                        </ListBox.ItemTemplate>
-                    </ListBox>
-                    
-                    <Grid Grid.Row="2" Margin="0,0,0,10">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="Auto"/>
-                            <ColumnDefinition Width="100"/>
-                            <ColumnDefinition Width="Auto"/>
-                            <ColumnDefinition Width="100"/>
-                        </Grid.ColumnDefinitions>
-                        <TextBlock Text="Frame Delay (ms):" VerticalAlignment="Center" Margin="0,0,10,0"/>
-                        <TextBox x:Name="ApngFrameDelay" Grid.Column="1" Text="100" VerticalAlignment="Center"/>
-                        <TextBlock Grid.Column="2" Text="Loop:" VerticalAlignment="Center" Margin="20,0,10,0"/>
-                        <ComboBox x:Name="ApngLoopCount" Grid.Column="3" SelectedIndex="0" VerticalAlignment="Center">
-                            <ComboBoxItem Content="Infinite"/>
-                            <ComboBoxItem Content="1"/>
-                            <ComboBoxItem Content="2"/>
-                            <ComboBoxItem Content="3"/>
-                            <ComboBoxItem Content="5"/>
-                        </ComboBox>
-                    </Grid>
-                    
-                    <Button Grid.Row="3" Content="Create APNG" Click="ApngCreate_Click" Height="45" FontSize="14"/>
-                </Grid>
-            </TabItem>
         </TabControl>
     </Grid>
 </Window>

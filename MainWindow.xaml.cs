@@ -1059,7 +1059,6 @@ public partial class MainWindow : Window
     }
 
     private string? _currentVideoPath;
-    private readonly ObservableCollection<string> _apngImages = new();
 
     private void VideoToGifOpen_Click(object sender, RoutedEventArgs e)
     {
@@ -1447,70 +1446,6 @@ public partial class MainWindow : Window
             }
 
             sprite.Save(savePath);
-        });
-    }
-
-    private void ApngAddImages_Click(object sender, RoutedEventArgs e)
-    {
-        var dialog = new OpenFileDialog
-        {
-            Filter = "Image Files|*.png;*.jpg;*.jpeg;*.bmp",
-            Multiselect = true
-        };
-        if (dialog.ShowDialog() == true)
-        {
-            foreach (var file in dialog.FileNames)
-            {
-                _apngImages.Add(file);
-            }
-        }
-    }
-
-    private void ApngClearImages_Click(object sender, RoutedEventArgs e)
-    {
-        _apngImages.Clear();
-    }
-
-    private void ApngCreate_Click(object sender, RoutedEventArgs e)
-    {
-        if (_apngImages.Count == 0)
-        {
-            MessageBox.Show("Please add images first.", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
-            return;
-        }
-
-        ShowSaveDialog(savePath =>
-        {
-            var frameDelay = int.Parse(ApngFrameDelay.Text);
-            var loop = ApngLoopCount.SelectedIndex;
-
-            using var firstImage = SixLabors.ImageSharp.Image.Load<Rgba32>(_apngImages[0]);
-            var width = firstImage.Width;
-            var height = firstImage.Height;
-
-            using var apng = new SixLabors.ImageSharp.Image<Rgba32>(width, height);
-            
-            var pngMeta = apng.Metadata.GetPngMetadata();
-            pngMeta.RepeatCount = loop == 0 ? 0u : (ushort)loop;
-
-                for (int i = 0; i < _apngImages.Count; i++)
-                {
-                    using var frame = SixLabors.ImageSharp.Image.Load<Rgba32>(_apngImages[i]);
-                    if (frame.Width != width || frame.Height != height)
-                    {
-                        frame.Mutate(ctx => ctx.Resize(width, height));
-                    }
-
-                    var frameMeta = frame.Frames.RootFrame.Metadata.GetPngMetadata();
-                    frameMeta.FrameDelay = new Rational((uint)frameDelay, 1000u);
-                    frameMeta.DisposalMethod = PngDisposalMethod.RestoreToBackground;
-
-                    apng.Frames.AddFrame(frame.Frames.RootFrame);
-                }
-
-            apng.Frames.RemoveFrame(0);
-            
-            apng.SaveAsPng(savePath);
         });
     }
 }
