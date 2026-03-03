@@ -22,17 +22,15 @@ If you want more controls when making a GIF, you can visit my other project: [Mi
 - **Transparency** - Adjust opacity
 - **Add Border** - Add colored borders around GIF
 - **GIF Debug** - View detailed information about GIF files (frames, delays, dimensions, etc.)
-
-todo:
-add video to gif,
-add export video (via ffmpeg),
-sprite sheet to gif (& vice-versa),
-apng maker.
+- **Video to GIF** - MP4 to GIF file
+- **GIF to video** - GIF to MP4 file
+- **Sprite sheet to GIF** - PNG Sprite sheet to GIF with proper alignment
 
 ## Requirements
 
 - Windows 10 or later
 - [.NET 10.0 Runtime](https://dotnet.microsoft.com/en-us/download/dotnet/10.0)
+- probably [FFMPEG](https://ffmpeg.org/download.html)
 
 ## Building
 
