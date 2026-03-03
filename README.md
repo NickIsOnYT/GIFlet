@@ -26,7 +26,7 @@ If you want more controls when making a GIF, you can visit my other project: [Mi
 ## Requirements
 
 - Windows 10 or later
-- .NET 10.0 Runtime
+- [.NET 10.0 Runtime](https://dotnet.microsoft.com/en-us/download/dotnet/10.0)
 
 ## Building
 
