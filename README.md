@@ -4,6 +4,8 @@ A Windows desktop application for editing GIF images, built with WPF and ImageSh
 
 Fully made using [OpenCode](https://opencode.ai/download) (MiniMax M2.5 Free)
 
+If you want more controls when making a GIF, you can visit my other project: [Mif](https://github.com/NickIsOnYT/Mif)
+
 ## Features
 
 - **Create GIF** - Make GIFs from multiple images
