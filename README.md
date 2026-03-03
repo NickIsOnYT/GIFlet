@@ -23,6 +23,12 @@ If you want more controls when making a GIF, you can visit my other project: [Mi
 - **Add Border** - Add colored borders around GIF
 - **GIF Debug** - View detailed information about GIF files (frames, delays, dimensions, etc.)
 
+todo:
+add video to gif
+add export video (via ffmpeg)
+sprite sheet to gif (& vice-versa)
+apng maker
+
 ## Requirements
 
 - Windows 10 or later
