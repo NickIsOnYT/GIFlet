@@ -62,6 +62,29 @@ public partial class MainWindow : Window
         InitializeComponent();
         CreateImageList.ItemsSource = _createImages;
         CombineGifList.ItemsSource = _combineGifs;
+        MainTabControl.SelectedIndex = 0;
+        LoadRandomTitle();
+    }
+
+    private void LoadRandomTitle()
+    {
+        try
+        {
+            var json = File.ReadAllText("phrases.json");
+            var phrases = System.Text.Json.JsonSerializer.Deserialize<List<string>>(json);
+            if (phrases != null && phrases.Count > 0)
+            {
+                var random = new Random();
+                TitleText.Text = phrases[random.Next(phrases.Count)];
+            }
+        }
+        catch { }
+    }
+
+    private void ModeSelector_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
+    {
+        if (MainTabControl == null) return;
+        MainTabControl.SelectedIndex = ModeSelector.SelectedIndex;
     }
 
     private void ShowSaveDialog(Action<string> saveAction)
@@ -145,6 +168,101 @@ public partial class MainWindow : Window
         _createImages.Clear();
     }
 
+    private void CreateFrameDelay_TextChanged(object sender, TextChangedEventArgs e)
+    {
+        if (CreateFpsDisplay == null) return;
+        if (int.TryParse(CreateFrameDelay.Text, out var ms) && ms > 0)
+        {
+            var fps = 1000.0 / ms;
+            CreateFpsDisplay.Text = $"{fps:F1} fps";
+        }
+        else
+        {
+            CreateFpsDisplay.Text = "— fps";
+        }
+    }
+
+    private void CreateImageList_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
+    {
+    }
+
+    private void CreateMoveUp_Click(object sender, RoutedEventArgs e)
+    {
+        var selected = CreateImageList.SelectedItems.Cast<string>().ToList();
+        if (selected.Count == 0) return;
+        var newIndices = new List<int>();
+        foreach (var item in selected)
+        {
+            var idx = _createImages.IndexOf(item);
+            if (idx > 0)
+            {
+                _createImages.RemoveAt(idx);
+                _createImages.Insert(idx - 1, item);
+                newIndices.Add(idx - 1);
+            }
+            else
+            {
+                newIndices.Add(idx);
+            }
+        }
+        CreateImageList.SelectionChanged -= CreateImageList_SelectionChanged;
+        CreateImageList.SelectedItem = null;
+        foreach (var idx in newIndices)
+        {
+            CreateImageList.SelectedItems.Add(_createImages[idx]);
+        }
+        CreateImageList.SelectionChanged += CreateImageList_SelectionChanged;
+    }
+
+    private void CreateMoveDown_Click(object sender, RoutedEventArgs e)
+    {
+        var selected = CreateImageList.SelectedItems.Cast<string>().ToList();
+        if (selected.Count == 0) return;
+        var newIndices = new List<int>();
+        for (int i = selected.Count - 1; i >= 0; i--)
+        {
+            var item = selected[i];
+            var idx = _createImages.IndexOf(item);
+            if (idx < _createImages.Count - 1)
+            {
+                _createImages.RemoveAt(idx);
+                _createImages.Insert(idx + 1, item);
+                newIndices.Insert(0, idx + 1);
+            }
+            else
+            {
+                newIndices.Insert(0, idx);
+            }
+        }
+        CreateImageList.SelectionChanged -= CreateImageList_SelectionChanged;
+        CreateImageList.SelectedItem = null;
+        foreach (var idx in newIndices)
+        {
+            CreateImageList.SelectedItems.Add(_createImages[idx]);
+        }
+        CreateImageList.SelectionChanged += CreateImageList_SelectionChanged;
+    }
+
+    private void CreateRemoveSelected_Click(object sender, RoutedEventArgs e)
+    {
+        var selected = CreateImageList.SelectedItems.Cast<string>().ToList();
+        foreach (var item in selected)
+        {
+            _createImages.Remove(item);
+        }
+    }
+
+    private void RefreshCreateImageList()
+    {
+        var temp = CreateImageList.SelectedItems.Cast<string>().ToList();
+        CreateImageList.ItemsSource = null;
+        CreateImageList.ItemsSource = _createImages;
+        foreach (var item in temp)
+        {
+            CreateImageList.SelectedItems.Add(item);
+        }
+    }
+
     private async void CreateGif_Click(object sender, RoutedEventArgs e)
     {
         if (_createImages.Count == 0)
@@ -177,20 +295,38 @@ public partial class MainWindow : Window
                 var gifMeta = output.Metadata.GetGifMetadata();
                 gifMeta.RepeatCount = (ushort)loop;
 
-                for (int i = 0; i < frames.Count; i++)
+                int startIdx = (firstFrameBg && noStack) ? 1 : 0;
+                for (int i = startIdx; i < frames.Count; i++)
                 {
                     using var resized = frames[i].Clone(ctx => ctx.Resize(width, height));
-                    var frameMeta = GetGifFrameMetadata(resized.Frames.RootFrame);
+                    Image<Rgba32> frameToAdd;
+                    if (firstFrameBg && noStack)
+                    {
+                        using var composite = new Image<Rgba32>(width, height);
+                        composite.Frames.AddFrame(frames[0].Frames.RootFrame);
+                        composite.Frames.RemoveFrame(0);
+                        composite.Mutate(ctx => ctx.DrawImage(resized, 1f));
+                        frameToAdd = composite.Clone();
+                    }
+                    else if (noStack || firstFrameBg)
+                    {
+                        using var fullFrame = new Image<Rgba32>(width, height);
+                        fullFrame.Frames.AddFrame(resized.Frames.RootFrame);
+                        fullFrame.Frames.RemoveFrame(0);
+                        frameToAdd = fullFrame.Clone();
+                    }
+                    else
+                    {
+                        frameToAdd = resized.Clone();
+                    }
+                    output.Frames.AddFrame(frameToAdd.Frames.RootFrame);
+                    frameToAdd.Dispose();
+                }
+
+                for (int i = 0; i < output.Frames.Count; i++)
+                {
+                    var frameMeta = GetGifFrameMetadata(output.Frames[i]);
                     frameMeta.FrameDelay = delay / 10;
-                    if (noStack)
-                    {
-                        frameMeta.DisposalMethod = GifDisposalMethod.RestoreToBackground;
-                    }
-                    else if (firstFrameBg && i == 0)
-                    {
-                        frameMeta.DisposalMethod = GifDisposalMethod.NotDispose;
-                    }
-                    output.Frames.AddFrame(resized.Frames.RootFrame);
                 }
 
                 output.Frames.RemoveFrame(0);

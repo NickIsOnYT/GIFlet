@@ -25,10 +25,23 @@ namespace GIFlet;
 
     private static void OnSourcePathChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
-        if (d is AnimatedImage img && e.NewValue is string path)
+        if (d is AnimatedImage img)
         {
-            img.LoadGif(path);
+            img.Cleanup();
+            if (e.NewValue is string path && !string.IsNullOrEmpty(path))
+            {
+                img.LoadGif(path);
+            }
         }
+    }
+
+    private void Cleanup()
+    {
+        _timer?.Stop();
+        _timer = null;
+        _decoder = null;
+        _wb = null;
+        Source = null;
     }
 
     private void LoadGif(string path)
