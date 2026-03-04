@@ -17,10 +17,20 @@ namespace GIFlet;
             DependencyProperty.Register(nameof(SourcePath), typeof(string), typeof(AnimatedImage),
                 new PropertyMetadata(null, OnSourcePathChanged));
 
+        public static readonly DependencyProperty IsAnimatedProperty =
+            DependencyProperty.Register(nameof(IsAnimated), typeof(bool), typeof(AnimatedImage),
+                new PropertyMetadata(false, OnSourcePathChanged));
+
     public string SourcePath
     {
         get => (string)GetValue(SourcePathProperty);
         set => SetValue(SourcePathProperty, value);
+    }
+
+    public bool IsAnimated
+    {
+        get => (bool)GetValue(IsAnimatedProperty);
+        set => SetValue(IsAnimatedProperty, value);
     }
 
     private static void OnSourcePathChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
@@ -52,13 +62,13 @@ namespace GIFlet;
             var uri = new Uri(path);
             _decoder = BitmapDecoder.Create(uri, BitmapCreateOptions.PreservePixelFormat, BitmapCacheOption.OnLoad);
             
-            if (_decoder.Frames.Count > 1)
-            {
-                var frame = _decoder.Frames[0];
-                _wb = new WriteableBitmap(frame);
-                Source = _wb;
-                _currentFrame = 0;
+            var frame = _decoder.Frames[0];
+            _wb = new WriteableBitmap(frame);
+            Source = _wb;
+            _currentFrame = 0;
 
+            if (IsAnimated && _decoder.Frames.Count > 1)
+            {
                 var duration = 100;
                 var metadata = frame.Metadata as BitmapMetadata;
                 if (metadata != null)
@@ -78,11 +88,6 @@ namespace GIFlet;
                 };
                 _timer.Tick += Timer_Tick;
                 _timer.Start();
-            }
-            else
-            {
-                var frame = _decoder.Frames[0];
-                Source = new WriteableBitmap(frame);
             }
         }
         catch (Exception ex)

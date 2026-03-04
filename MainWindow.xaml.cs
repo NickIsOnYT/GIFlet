@@ -341,6 +341,116 @@ public partial class MainWindow : Window
         });
     }
 
+    private async void CreateMp4_Click(object sender, RoutedEventArgs e)
+    {
+        if (_createImages.Count == 0)
+        {
+            MessageBox.Show("Please add at least one image.", "Error", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        var dialog = new SaveFileDialog
+        {
+            Filter = "MP4 Video|*.mp4",
+            DefaultExt = "mp4"
+        };
+        if (dialog.ShowDialog() != true) return;
+
+        var delay = int.Parse(CreateFrameDelay.Text);
+        var noStack = CreateNoStackFrames.IsChecked == true;
+        var firstFrameBg = CreateFirstFrameBg.IsChecked == true;
+
+        var tempDir = System.IO.Path.Combine(System.IO.Path.GetTempPath(), $"giflet_mp4_{Guid.NewGuid()}");
+        System.IO.Directory.CreateDirectory(tempDir);
+
+        var frames = new List<Image<Rgba32>>();
+
+        foreach (var imgPath in _createImages)
+        {
+            var img = await SixLabors.ImageSharp.Image.LoadAsync<Rgba32>(imgPath);
+            frames.Add(img);
+        }
+
+        if (frames.Count > 0)
+        {
+            var width = frames[0].Width;
+            var height = frames[0].Height;
+
+            int startIdx = (firstFrameBg && noStack) ? 1 : 0;
+            int frameNum = 0;
+            for (int i = startIdx; i < frames.Count; i++)
+            {
+                using var resized = frames[i].Clone(ctx => ctx.Resize(width, height));
+                Image<Rgba32> frameToSave;
+                if (firstFrameBg && noStack)
+                {
+                    using var composite = new Image<Rgba32>(width, height);
+                    composite.Frames.AddFrame(frames[0].Frames.RootFrame);
+                    composite.Frames.RemoveFrame(0);
+                    composite.Mutate(ctx => ctx.DrawImage(resized, 1f));
+                    frameToSave = composite.Clone();
+                }
+                else if (noStack || firstFrameBg)
+                {
+                    using var fullFrame = new Image<Rgba32>(width, height);
+                    fullFrame.Frames.AddFrame(resized.Frames.RootFrame);
+                    fullFrame.Frames.RemoveFrame(0);
+                    frameToSave = fullFrame.Clone();
+                }
+                else
+                {
+                    frameToSave = resized.Clone();
+                }
+
+                var framePath = System.IO.Path.Combine(tempDir, $"frame_{frameNum:D5}.png");
+                frameToSave.SaveAsPng(framePath);
+                frameToSave.Dispose();
+                frameNum++;
+            }
+
+            foreach (var f in frames) f.Dispose();
+
+            var ffmpegPath = FindFfmpeg();
+            if (ffmpegPath == null)
+            {
+                System.IO.Directory.Delete(tempDir, true);
+                MessageBox.Show("FFmpeg not found. Please install FFmpeg and ensure it's in your PATH.", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                return;
+            }
+
+            var fps = 1000.0 / delay;
+            var fpsStr = fps.ToString("F2", System.Globalization.CultureInfo.InvariantCulture);
+
+            var startInfo = new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = ffmpegPath,
+                Arguments = $"-y -framerate {fpsStr} -i \"{tempDir}\\frame_%05d.png\" -c:v libx264 -pix_fmt yuv420p \"{dialog.FileName}\"",
+                UseShellExecute = false,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                CreateNoWindow = true,
+                WorkingDirectory = tempDir
+            };
+
+            var process = System.Diagnostics.Process.Start(startInfo);
+            await process.WaitForExitAsync();
+            if (process.ExitCode != 0)
+            {
+                var error = await process.StandardError.ReadToEndAsync();
+                System.IO.Directory.Delete(tempDir, true);
+                await Dispatcher.InvokeAsync(() => MessageBox.Show($"FFmpeg error: {error}", "Error", MessageBoxButton.OK, MessageBoxImage.Error));
+                return;
+            }
+
+            System.IO.Directory.Delete(tempDir, true);
+            await Dispatcher.InvokeAsync(() => MessageBox.Show("MP4 created successfully!", "Success", MessageBoxButton.OK, MessageBoxImage.Information));
+        }
+        else
+        {
+            System.IO.Directory.Delete(tempDir, true);
+        }
+    }
+
     // Split GIF
     private void SplitOpenGif_Click(object sender, RoutedEventArgs e)
     {
@@ -1462,6 +1572,46 @@ public partial class MainWindow : Window
             gif.Frames.RemoveFrame(0);
             gif.SaveAsGif(savePath);
         });
+    }
+
+    private async void SpriteToGifExportFrames_Click(object sender, RoutedEventArgs e)
+    {
+        if (string.IsNullOrEmpty(_currentSpriteSheetPath)) return;
+
+        var columns = int.Parse(SpriteColumns.Text);
+        var rows = int.Parse(SpriteRows.Text);
+        var frameWidth = int.Parse(SpriteFrameWidth.Text);
+        var frameHeight = int.Parse(SpriteFrameHeight.Text);
+
+        using var image = SixLabors.ImageSharp.Image.Load<Rgba32>(_currentSpriteSheetPath);
+        
+        if (frameWidth == 0) frameWidth = image.Width / columns;
+        if (frameHeight == 0) frameHeight = image.Height / rows;
+
+        var dialog = new SaveFileDialog
+        {
+            Filter = "PNG Image|*.png",
+            DefaultExt = "png",
+            FileName = "frame_0000.png"
+        };
+        if (dialog.ShowDialog() != true) return;
+
+        var folderPath = System.IO.Path.GetDirectoryName(dialog.FileName);
+        if (string.IsNullOrEmpty(folderPath)) return;
+
+        var count = 0;
+        for (int y = 0; y < rows; y++)
+        {
+            for (int x = 0; x < columns; x++)
+            {
+                using var frame = image.Clone(ctx => ctx.Crop(new ImageSharpRect(x * frameWidth, y * frameHeight, frameWidth, frameHeight)));
+                var outputPath = System.IO.Path.Combine(folderPath, $"frame_{count:D4}.png");
+                frame.SaveAsPng(outputPath);
+                count++;
+            }
+        }
+
+        MessageBox.Show($"Exported {count} frames to {folderPath}");
     }
 
     private async void SpriteToGifPreviewAnim_Click(object sender, RoutedEventArgs e)
