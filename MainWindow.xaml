@@ -14,11 +14,13 @@
         
         <Grid Grid.Row="0" Margin="10,10,10,5">
             <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto"/>
                 <ColumnDefinition Width="*"/>
                 <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="Auto"/>
             </Grid.ColumnDefinitions>
-            <TextBlock x:Name="TitleText" Text="GIFlet" FontSize="20" FontWeight="Bold" VerticalAlignment="Center" Foreground="White"/>
-            <ComboBox x:Name="ModeSelector" Grid.Column="1" Height="30" FontSize="13" SelectionChanged="ModeSelector_SelectionChanged" MinWidth="180">
+            <TextBlock x:Name="TitleText" Text="GIFlet" FontSize="20" FontWeight="Bold" VerticalAlignment="Center" Foreground="White" Margin="0,0,15,0"/>
+            <ComboBox x:Name="ModeSelector" Grid.Column="2" Height="30" FontSize="13" SelectionChanged="ModeSelector_SelectionChanged" MinWidth="160">
             <ComboBoxItem Content="Create GIF" IsSelected="True"/>
             <ComboBoxItem Content="Split GIF"/>
             <ComboBoxItem Content="Combine GIFs"/>
@@ -37,7 +39,9 @@
             <ComboBoxItem Content="GIF to Video"/>
             <ComboBoxItem Content="Sprite Sheet to GIF"/>
             <ComboBoxItem Content="GIF to Sprite Sheet"/>
+            <ComboBoxItem Content="Settings"/>
         </ComboBox>
+        <Button Grid.Column="3" Content="Settings" Click="OpenSettings_Click" FontSize="12" Width="80" Height="35" VerticalAlignment="Center" Margin="10,0,0,0"/>
         </Grid>
         
         <TabControl x:Name="MainTabControl" Grid.Row="1">
@@ -793,6 +797,13 @@
                     </Grid>
                     
                     <Button Grid.Row="3" Content="Export Sprite Sheet" Click="GifToSpriteExport_Click" Height="45" FontSize="14"/>
+                </Grid>
+            </TabItem>
+
+            <!-- Settings -->
+            <TabItem Header="Settings">
+                <Grid Margin="10">
+                    <TextBlock Text="Temp text until i think of settings to add" FontSize="16" VerticalAlignment="Top" HorizontalAlignment="Left" Margin="0,10,0,0"/>
                 </Grid>
             </TabItem>
         </TabControl>

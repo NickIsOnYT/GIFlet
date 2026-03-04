@@ -81,6 +81,11 @@ public partial class MainWindow : Window
         catch { }
     }
 
+    private void OpenSettings_Click(object sender, RoutedEventArgs e)
+    {
+        ModeSelector.SelectedIndex = 18;
+    }
+
     private void ModeSelector_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
     {
         if (MainTabControl == null) return;
