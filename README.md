@@ -13,16 +13,16 @@ I'm not a programmer so this was fully made using [OpenCode](https://opencode.ai
 - **Speed** - Adjust playback speed (0.25x to 4x)
 - **Optimize** - Reduce file size with color quantization
 - **Crop** - Trim GIF to specific dimensions
-- **Resize** - Change GIF dimensions
+- **Resize** - Change GIF dimensions (will stretch to fit)
 - **Rotate/Flip** - Rotate 90°/180°/270° or flip horizontally/vertically
 - **Effects** - Apply Blur, Sharpen, Gaussian Blur, Invert, Grayscale, Sepia
 - **Colors** - Adjust Brightness, Contrast, and Saturation
-- **Transparency** - Adjust opacity
-- **Add Border** - Add colored borders around GIF
+- **Transparency** - Adjust opacity (broken but funny)
+- **Add Border** - Add borders around GIF
 - **GIF Debug** - View detailed information about GIF files (frames, delays, dimensions, etc.)
-- **Video to GIF** - MP4 to GIF file
-- **GIF to video** - GIF to MP4 file
-- **Sprite sheet to GIF** - PNG Sprite sheet to GIF with proper alignment
+- **Video to GIF** (and vice-versa)
+- **Sprite sheet to GIF** (and vice-versa)
+- **Images to sprite sheet**
 
 ## Requirements
 
