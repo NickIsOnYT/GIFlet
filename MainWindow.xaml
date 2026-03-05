@@ -39,6 +39,7 @@
             <ComboBoxItem Content="GIF to Video"/>
             <ComboBoxItem Content="Sprite Sheet to GIF"/>
             <ComboBoxItem Content="GIF to Sprite Sheet"/>
+            <ComboBoxItem Content="Images to Sprite Sheet"/>
             <ComboBoxItem Content="Settings"/>
         </ComboBox>
         <Button Grid.Column="3" Content="Settings" Click="OpenSettings_Click" FontSize="12" Width="80" Height="35" VerticalAlignment="Center" Margin="10,0,0,0"/>
@@ -728,9 +729,24 @@
                         <Button Content="Clear" Click="SpriteToGifClear_Click" Width="80" Height="35" Margin="0,0,0,10"/>
                     </StackPanel>
                     
-                    <GroupBox Grid.Row="1" Header="Preview">
-                        <Image x:Name="SpriteToGifPreview" Stretch="Uniform"/>
-                    </GroupBox>
+                    <Grid Grid.Row="1">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="200"/>
+                        </Grid.ColumnDefinitions>
+                        <GroupBox Header="Preview">
+                            <Image x:Name="SpriteToGifPreview" Stretch="Uniform"/>
+                        </GroupBox>
+                        <GroupBox Grid.Column="1" Header="Frames" Margin="10,0,0,0">
+                            <ListBox x:Name="SpriteFrameList" SelectionMode="Extended">
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <CheckBox Content="{Binding}" IsChecked="{Binding IsSelected, Mode=TwoWay}"/>
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
+                        </GroupBox>
+                    </Grid>
                     
                     <Grid Grid.Row="2" Margin="0,10,0,10">
                         <Grid.ColumnDefinitions>
@@ -742,15 +758,21 @@
                             <ColumnDefinition Width="80"/>
                             <ColumnDefinition Width="Auto"/>
                             <ColumnDefinition Width="80"/>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="80"/>
+                            <ColumnDefinition Width="Auto"/>
                         </Grid.ColumnDefinitions>
                         <TextBlock Text="Columns:" VerticalAlignment="Center"/>
-                        <TextBox x:Name="SpriteColumns" Grid.Column="1" Text="4"/>
+                        <TextBox x:Name="SpriteColumns" Grid.Column="1" Text="4" TextChanged="SpriteColumns_TextChanged"/>
                         <TextBlock Grid.Column="2" Text="Rows:" VerticalAlignment="Center" Margin="10,0,0,0"/>
-                        <TextBox x:Name="SpriteRows" Grid.Column="3" Text="4"/>
+                        <TextBox x:Name="SpriteRows" Grid.Column="3" Text="4" TextChanged="SpriteRows_TextChanged"/>
                         <TextBlock Grid.Column="4" Text="Frame Width:" VerticalAlignment="Center" Margin="10,0,0,0"/>
                         <TextBox x:Name="SpriteFrameWidth" Grid.Column="5" Text="0"/>
                         <TextBlock Grid.Column="6" Text="Frame Height:" VerticalAlignment="Center" Margin="10,0,0,0"/>
                         <TextBox x:Name="SpriteFrameHeight" Grid.Column="7" Text="0"/>
+                        <TextBlock Grid.Column="8" Text="Delay (ms):" VerticalAlignment="Center" Margin="10,0,0,0"/>
+                        <TextBox x:Name="SpriteFrameDelay" Grid.Column="9" Text="100" TextChanged="SpriteFrameDelay_TextChanged" Width="70"/>
+                        <TextBlock x:Name="SpriteFpsDisplay" Grid.Column="10" Text="10 fps" VerticalAlignment="Center" Foreground="#AAA" Margin="5,0,0,0"/>
                     </Grid>
                     
                     <Grid Grid.Row="3">
@@ -787,16 +809,51 @@
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto"/>
                             <ColumnDefinition Width="80"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="Columns:" VerticalAlignment="Center"/>
+                        <TextBox x:Name="GifSpriteColumns" Grid.Column="1" Text="4"/>
+                    </Grid>
+                    
+                    <Button Grid.Row="3" Content="Export Sprite Sheet" Click="GifToSpriteExport_Click" Height="45" FontSize="14"/>
+                </Grid>
+            </TabItem>
+
+            <!-- Images to Sprite Sheet -->
+            <TabItem Header="Images to Sprite Sheet">
+                <Grid Margin="10">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+                    
+                    <StackPanel Orientation="Horizontal">
+                        <Button Content="Add Images" Click="PngToSpriteAddImages_Click" Width="120" Height="35" Margin="0,0,10,0" VerticalAlignment="Top"/>
+                        <Button Content="Clear" Click="PngToSpriteClear_Click" Width="80" Height="35" VerticalAlignment="Top"/>
+                    </StackPanel>
+                    
+                    <ListBox x:Name="PngToSpriteImageList" Grid.Row="1" SelectionMode="Extended" Margin="0,0,0,10">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <StackPanel Orientation="Horizontal">
+                                    <Image Source="{Binding}" Width="60" Height="60" Stretch="Uniform" Margin="5"/>
+                                    <TextBlock Text="{Binding}" VerticalAlignment="Center" Margin="5,0"/>
+                                </StackPanel>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                    
+                    <Grid Grid.Row="2" Margin="0,0,0,10">
+                        <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto"/>
                             <ColumnDefinition Width="80"/>
                         </Grid.ColumnDefinitions>
                         <TextBlock Text="Columns:" VerticalAlignment="Center"/>
-                        <TextBox x:Name="GifSpriteColumns" Grid.Column="1" Text="4"/>
-                        <TextBlock Grid.Column="2" Text="Padding:" VerticalAlignment="Center" Margin="10,0,0,0"/>
-                        <TextBox x:Name="GifSpritePadding" Grid.Column="3" Text="0"/>
+                        <TextBox x:Name="PngToSpriteColumns" Grid.Column="1" Text="4"/>
                     </Grid>
                     
-                    <Button Grid.Row="3" Content="Export Sprite Sheet" Click="GifToSpriteExport_Click" Height="45" FontSize="14"/>
+                    <Button Grid.Row="3" Content="Export Sprite Sheet" Click="PngToSpriteExport_Click" Height="45" FontSize="14"/>
                 </Grid>
             </TabItem>
 

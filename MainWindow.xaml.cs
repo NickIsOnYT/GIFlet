@@ -62,6 +62,7 @@ public partial class MainWindow : Window
         InitializeComponent();
         CreateImageList.ItemsSource = _createImages;
         CombineGifList.ItemsSource = _combineGifs;
+        PngToSpriteImageList.ItemsSource = _pngToSpriteImages;
         MainTabControl.SelectedIndex = 0;
         LoadRandomTitle();
     }
@@ -83,7 +84,7 @@ public partial class MainWindow : Window
 
     private void OpenSettings_Click(object sender, RoutedEventArgs e)
     {
-        ModeSelector.SelectedIndex = 18;
+        ModeSelector.SelectedIndex = 19;
     }
 
     private void ModeSelector_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
@@ -124,6 +125,26 @@ public partial class MainWindow : Window
             try
             {
                 openAction(dialog.FileName);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Error: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+    }
+
+    private void ShowOpenDialogMultiple(string filter, Action<string[]> openAction)
+    {
+        var dialog = new OpenFileDialog
+        {
+            Filter = filter,
+            Multiselect = true
+        };
+        if (dialog.ShowDialog() == true)
+        {
+            try
+            {
+                openAction(dialog.FileNames);
             }
             catch (Exception ex)
             {
@@ -184,6 +205,20 @@ public partial class MainWindow : Window
         else
         {
             CreateFpsDisplay.Text = "— fps";
+        }
+    }
+
+    private void SpriteFrameDelay_TextChanged(object sender, TextChangedEventArgs e)
+    {
+        if (SpriteFpsDisplay == null) return;
+        if (int.TryParse(SpriteFrameDelay.Text, out var ms) && ms > 0)
+        {
+            var fps = 1000.0 / ms;
+            SpriteFpsDisplay.Text = $"{fps:F1} fps";
+        }
+        else
+        {
+            SpriteFpsDisplay.Text = "— fps";
         }
     }
 
@@ -1531,6 +1566,15 @@ public partial class MainWindow : Window
             _currentSpriteSheetPath = path;
             var bitmap = new BitmapImage(new Uri(path));
             SpriteToGifPreview.Source = bitmap;
+            
+            SpriteFrameList.Items.Clear();
+            var columns = int.Parse(SpriteColumns.Text);
+            var rows = int.Parse(SpriteRows.Text);
+            var totalFrames = columns * rows;
+            for (int i = 0; i < totalFrames; i++)
+            {
+                SpriteFrameList.Items.Add(new FrameItem { FrameNumber = i, IsSelected = true });
+            }
         });
     }
 
@@ -1538,13 +1582,75 @@ public partial class MainWindow : Window
     {
         _currentSpriteSheetPath = null;
         SpriteToGifPreview.Source = null;
+        SpriteFrameList.Items.Clear();
+    }
+
+    private void SpriteColumns_TextChanged(object sender, TextChangedEventArgs e)
+    {
+        UpdateSpriteFrameList();
+    }
+
+    private void SpriteRows_TextChanged(object sender, TextChangedEventArgs e)
+    {
+        UpdateSpriteFrameList();
+    }
+
+    private void UpdateSpriteFrameList()
+    {
+        if (_currentSpriteSheetPath == null) return;
+
+        if (!int.TryParse(SpriteColumns.Text, out int columns)) columns = 4;
+        if (!int.TryParse(SpriteRows.Text, out int rows)) rows = 4;
+
+        var totalFrames = columns * rows;
+        var existingCount = SpriteFrameList.Items.Count;
+
+        if (totalFrames > existingCount)
+        {
+            for (int i = existingCount; i < totalFrames; i++)
+            {
+                SpriteFrameList.Items.Add(new FrameItem { FrameNumber = i, IsSelected = true });
+            }
+        }
+        else if (totalFrames < existingCount)
+        {
+            while (SpriteFrameList.Items.Count > totalFrames)
+            {
+                SpriteFrameList.Items.RemoveAt(SpriteFrameList.Items.Count - 1);
+            }
+        }
+    }
+
+    public class FrameItem : System.ComponentModel.INotifyPropertyChanged
+    {
+        public int FrameNumber { get; set; }
+        private bool _isSelected = true;
+        public bool IsSelected
+        {
+            get => _isSelected;
+            set
+            {
+                _isSelected = value;
+                PropertyChanged?.Invoke(this, new System.ComponentModel.PropertyChangedEventArgs(nameof(IsSelected)));
+            }
+        }
+        public override string ToString() => $"Frame {FrameNumber}";
+
+        public event System.ComponentModel.PropertyChangedEventHandler? PropertyChanged;
     }
 
     private async void SpriteToGifCreate_Click(object sender, RoutedEventArgs e)
     {
         if (string.IsNullOrEmpty(_currentSpriteSheetPath)) return;
 
-        ShowSaveDialog(savePath =>
+        var selectedFrames = SpriteFrameList.Items.Cast<FrameItem>().Where(f => f.IsSelected).Select(f => f.FrameNumber).ToList();
+        if (selectedFrames.Count == 0)
+        {
+            MessageBox.Show("Please select at least one frame.", "Error", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        ShowSaveDialog(async savePath =>
         {
             var columns = int.Parse(SpriteColumns.Text);
             var rows = int.Parse(SpriteRows.Text);
@@ -1556,26 +1662,61 @@ public partial class MainWindow : Window
             if (frameWidth == 0) frameWidth = image.Width / columns;
             if (frameHeight == 0) frameHeight = image.Height / rows;
 
-            var gif = new SixLabors.ImageSharp.Image<Rgba32>(frameWidth, rows * frameHeight);
-            var frameDelay = int.Parse(VideoDuration.Text);
+            var outputFrameWidth = frameWidth;
+            var outputFrameHeight = frameHeight;
+
+            var frameDelay = int.Parse(SpriteFrameDelay.Text);
             if (frameDelay == 0) frameDelay = 100;
 
-            var gifMeta = gif.Metadata.GetGifMetadata();
-            gifMeta.RepeatCount = 0;
+            var tempDir = System.IO.Path.Combine(System.IO.Path.GetTempPath(), $"giflet_sprite_{Guid.NewGuid()}");
+            System.IO.Directory.CreateDirectory(tempDir);
 
-            for (int y = 0; y < rows; y++)
+            int exportIndex = 0;
+            foreach (var frameNum in selectedFrames)
             {
-                for (int x = 0; x < columns; x++)
+                var x = (frameNum % columns) * frameWidth;
+                var y = (frameNum / columns) * frameHeight;
+                
+                using var cropped = image.Clone(ctx => ctx.Crop(new ImageSharpRect(x, y, frameWidth, frameHeight)));
+                
+                using var transparentFrame = new SixLabors.ImageSharp.Image<Rgba32>(frameWidth, frameHeight);
+                for (int py = 0; py < frameHeight; py++)
                 {
-                    var frame = image.Clone(ctx => ctx.Crop(new ImageSharpRect(x * frameWidth, y * frameHeight, frameWidth, frameHeight)));
-                    var frameMeta = frame.Frames.RootFrame.Metadata.GetGifMetadata();
-                    frameMeta.FrameDelay = frameDelay / 10;
-                    gif.Frames.AddFrame(frame.Frames.RootFrame);
+                    for (int px = 0; px < frameWidth; px++)
+                    {
+                        transparentFrame[px, py] = SixLabors.ImageSharp.Color.Transparent;
+                    }
                 }
+                transparentFrame.Mutate(ctx => ctx.DrawImage(cropped, 1f));
+                
+                transparentFrame.SaveAsPng(System.IO.Path.Combine(tempDir, $"frame_{exportIndex:D4}.png"));
+                exportIndex++;
             }
 
-            gif.Frames.RemoveFrame(0);
-            gif.SaveAsGif(savePath);
+            var fps = 1000.0 / frameDelay;
+            var fpsStr = fps.ToString("F2", System.Globalization.CultureInfo.InvariantCulture);
+
+            var ffmpegPath = FindFfmpeg();
+            if (ffmpegPath == null)
+            {
+                System.IO.Directory.Delete(tempDir, true);
+                MessageBox.Show("FFmpeg not found. Please install FFmpeg and ensure it's in your PATH.", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                return;
+            }
+
+            var startInfo = new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = ffmpegPath,
+                Arguments = $"-y -framerate {fpsStr} -i \"{tempDir}\\frame_%04d.png\" -vf \"split[s0][s1];[s0]palettegen=stats_mode=diff[p];[s1][p]paletteuse=dither=bayer:bayer_scale=5:diff_mode=rectangle\" -loop 0 \"{savePath}\"",
+                UseShellExecute = false,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                CreateNoWindow = true
+            };
+
+            var process = System.Diagnostics.Process.Start(startInfo);
+            await process.WaitForExitAsync();
+            System.IO.Directory.Delete(tempDir, true);
         });
     }
 
@@ -1681,16 +1822,24 @@ public partial class MainWindow : Window
         _gifFrames.Clear();
         try
         {
-            var decoder = BitmapDecoder.Create(new Uri(path), BitmapCreateOptions.PreservePixelFormat, BitmapCacheOption.OnLoad);
-            foreach (var frame in decoder.Frames)
+            using var gif = SixLabors.ImageSharp.Image.Load<Rgba32>(path);
+            var width = gif.Width;
+            var height = gif.Height;
+            
+            using var fullFrame = new SixLabors.ImageSharp.Image<Rgba32>(width, height);
+            
+            for (int i = 0; i < gif.Frames.Count; i++)
             {
-                var bitmap = new WriteableBitmap(frame);
-                var image = new BitmapImage();
+                using var frameImg = new SixLabors.ImageSharp.Image<Rgba32>(width, height);
+                frameImg.Frames.AddFrame(gif.Frames[i]);
+                frameImg.Frames.RemoveFrame(0);
+                fullFrame.Mutate(ctx => ctx.DrawImage(frameImg, 1f));
+                
                 using var ms = new MemoryStream();
-                var encoder = new PngBitmapEncoder();
-                encoder.Frames.Add(BitmapFrame.Create(bitmap));
-                encoder.Save(ms);
+                fullFrame.SaveAsPng(ms);
                 ms.Position = 0;
+                
+                var image = new BitmapImage();
                 image.BeginInit();
                 image.StreamSource = ms;
                 image.CacheOption = BitmapCacheOption.OnLoad;
@@ -1713,17 +1862,22 @@ public partial class MainWindow : Window
     {
         if (_gifFrames.Count == 0) return;
 
-        ShowSaveDialog(savePath =>
+        var dialog = new SaveFileDialog
         {
-            var columns = int.Parse(GifSpriteColumns.Text);
-            var padding = int.Parse(GifSpritePadding.Text);
+            Filter = "PNG Image|*.png",
+            DefaultExt = "png"
+        };
+        if (dialog.ShowDialog() != true) return;
+
+        var savePath = dialog.FileName;
+        var columns = int.Parse(GifSpriteColumns.Text);
 
             var frameWidth = _gifFrames[0].PixelWidth;
             var frameHeight = _gifFrames[0].PixelHeight;
             var rows = (int)Math.Ceiling((double)_gifFrames.Count / columns);
 
-            var spriteWidth = columns * frameWidth + (columns + 1) * padding;
-            var spriteHeight = rows * frameHeight + (rows + 1) * padding;
+            var spriteWidth = columns * frameWidth;
+            var spriteHeight = rows * frameHeight;
 
             using var sprite = new SixLabors.ImageSharp.Image<Rgba32>(spriteWidth, spriteHeight);
 
@@ -1731,8 +1885,8 @@ public partial class MainWindow : Window
             {
                 var col = i % columns;
                 var row = i / columns;
-                var x = padding + col * (frameWidth + padding);
-                var y = padding + row * (frameHeight + padding);
+                var x = col * frameWidth;
+                var y = row * frameHeight;
 
                 var framePath = System.IO.Path.Combine(System.IO.Path.GetTempPath(), $"frame_{i}.png");
                 using (var fileStream = new FileStream(framePath, FileMode.Create))
@@ -1748,6 +1902,69 @@ public partial class MainWindow : Window
             }
 
             sprite.Save(savePath);
+            MessageBox.Show("Sprite sheet created successfully!", "Success", MessageBoxButton.OK, MessageBoxImage.Information);
+    }
+
+    private readonly ObservableCollection<string> _pngToSpriteImages = new();
+
+    private void PngToSpriteAddImages_Click(object sender, RoutedEventArgs e)
+    {
+        ShowOpenDialogMultiple("PNG Image|*.png", paths =>
+        {
+            foreach (var path in paths)
+            {
+                _pngToSpriteImages.Add(path);
+            }
         });
+    }
+
+    private void PngToSpriteClear_Click(object sender, RoutedEventArgs e)
+    {
+        _pngToSpriteImages.Clear();
+    }
+
+    private async void PngToSpriteExport_Click(object sender, RoutedEventArgs e)
+    {
+        if (_pngToSpriteImages.Count == 0)
+        {
+            MessageBox.Show("Please add at least one image.", "Error", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        var dialog = new SaveFileDialog
+        {
+            Filter = "PNG Image|*.png",
+            DefaultExt = "png"
+        };
+        if (dialog.ShowDialog() != true) return;
+
+        var savePath = dialog.FileName;
+        var columns = int.Parse(PngToSpriteColumns.Text);
+
+            var firstImage = await SixLabors.ImageSharp.Image.LoadAsync<Rgba32>(_pngToSpriteImages[0]);
+            var frameWidth = firstImage.Width;
+            var frameHeight = firstImage.Height;
+            firstImage.Dispose();
+
+            var rows = (int)Math.Ceiling((double)_pngToSpriteImages.Count / columns);
+
+            var spriteWidth = columns * frameWidth;
+            var spriteHeight = rows * frameHeight;
+
+            using var sprite = new SixLabors.ImageSharp.Image<Rgba32>(spriteWidth, spriteHeight);
+
+            for (int i = 0; i < _pngToSpriteImages.Count; i++)
+            {
+                var col = i % columns;
+                var row = i / columns;
+                var x = col * frameWidth;
+                var y = row * frameHeight;
+
+                using var frameImage = await SixLabors.ImageSharp.Image.LoadAsync<Rgba32>(_pngToSpriteImages[i]);
+                sprite.Mutate(ctx => ctx.DrawImage(frameImage, new ImageSharpPoint(x, y), 1f));
+            }
+
+            sprite.Save(savePath);
+            MessageBox.Show("Sprite sheet created successfully!", "Success", MessageBoxButton.OK, MessageBoxImage.Information);
     }
 }
