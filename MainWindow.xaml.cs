@@ -5,18 +5,9 @@ using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using Microsoft.Win32;
-using SixLabors.ImageSharp;
-using SixLabors.ImageSharp.Processing;
-using SixLabors.ImageSharp.Formats.Gif;
-using SixLabors.ImageSharp.PixelFormats;
-using SixLabors.ImageSharp.Processing.Processors.Quantization;
-using SixLabors.ImageSharp.Drawing;
-using SixLabors.ImageSharp.Formats.Png;
-using SixLabors.ImageSharp.Formats;
+using ImageMagick;
 using System.Collections.ObjectModel;
 using SysPath = System.IO.Path;
-using ImageSharpPoint = SixLabors.ImageSharp.Point;
-using ImageSharpRect = SixLabors.ImageSharp.Rectangle;
 
 namespace GIFlet;
 
@@ -166,7 +157,7 @@ public partial class MainWindow : Window
 
     private byte[] LoadGifBytes(string path) => File.ReadAllBytes(path);
 
-    private static GifFrameMetadata GetGifFrameMetadata(ImageFrame frame) => frame.Metadata.GetGifMetadata();
+    private static MagickImage GetFrame(MagickImage img, int index) => img;
 
     // Create GIF
     private void CreateAddImages_Click(object sender, RoutedEventArgs e)
@@ -318,11 +309,11 @@ public partial class MainWindow : Window
             var noStack = CreateNoStackFrames.IsChecked == true;
             var firstFrameBg = CreateFirstFrameBg.IsChecked == true;
 
-            var frames = new List<Image<Rgba32>>();
+            var frames = new List<MagickImage>();
 
             foreach (var imgPath in _createImages)
             {
-                var img = await SixLabors.ImageSharp.Image.LoadAsync<Rgba32>(imgPath);
+                var img = new MagickImage(imgPath);
                 frames.Add(img);
             }
 
@@ -331,50 +322,37 @@ public partial class MainWindow : Window
                 var width = frames[0].Width;
                 var height = frames[0].Height;
 
-                using var output = new Image<Rgba32>(width, height);
-                var gifMeta = output.Metadata.GetGifMetadata();
-                gifMeta.RepeatCount = (ushort)loop;
+                var gif = new MagickImageCollection();
 
                 int startIdx = (firstFrameBg && noStack) ? 1 : 0;
                 for (int i = startIdx; i < frames.Count; i++)
                 {
-                    using var resized = frames[i].Clone(ctx => ctx.Resize(width, height));
-                    Image<Rgba32> frameToAdd;
+                    using var resized = new MagickImage(frames[i]);
+                    resized.Resize(width, height);
+                    MagickImage frameToAdd;
                     if (firstFrameBg && noStack)
                     {
-                        using var composite = new Image<Rgba32>(width, height);
-                        composite.Frames.AddFrame(frames[0].Frames.RootFrame);
-                        composite.Frames.RemoveFrame(0);
-                        composite.Mutate(ctx => ctx.DrawImage(resized, 1f));
-                        frameToAdd = composite.Clone();
+                        using var composite = new MagickImage(MagickColors.Transparent, width, height);
+                        composite.Composite(frames[0], CompositeOperator.Copy);
+                        composite.Composite(resized, CompositeOperator.Over);
+                        frameToAdd = new MagickImage(composite);
                     }
                     else if (noStack || firstFrameBg)
                     {
-                        using var fullFrame = new Image<Rgba32>(width, height);
-                        fullFrame.Frames.AddFrame(resized.Frames.RootFrame);
-                        fullFrame.Frames.RemoveFrame(0);
-                        frameToAdd = fullFrame.Clone();
+                        using var fullFrame = new MagickImage(MagickColors.Transparent, width, height);
+                        fullFrame.Composite(resized, CompositeOperator.Copy);
+                        frameToAdd = new MagickImage(fullFrame);
                     }
                     else
                     {
-                        frameToAdd = resized.Clone();
+                        frameToAdd = new MagickImage(resized);
                     }
-                    output.Frames.AddFrame(frameToAdd.Frames.RootFrame);
-                    frameToAdd.Dispose();
+                    frameToAdd.AnimationDelay = (ushort)(delay / 10);
+                    gif.Add(frameToAdd);
                 }
 
-                for (int i = 0; i < output.Frames.Count; i++)
-                {
-                    var frameMeta = GetGifFrameMetadata(output.Frames[i]);
-                    frameMeta.FrameDelay = delay / 10;
-                }
-
-                output.Frames.RemoveFrame(0);
-
-                await output.SaveAsGifAsync(path, new GifEncoder
-                {
-                    ColorTableMode = GifColorTableMode.Local
-                });
+                gif[0].AnimationIterations = (ushort)loop;
+                await gif.WriteAsync(path);
 
                 foreach (var f in frames) f.Dispose();
             }
@@ -397,17 +375,18 @@ public partial class MainWindow : Window
         if (dialog.ShowDialog() != true) return;
 
         var delay = int.Parse(CreateFrameDelay.Text);
+        if (delay == 0) delay = 100;
         var noStack = CreateNoStackFrames.IsChecked == true;
         var firstFrameBg = CreateFirstFrameBg.IsChecked == true;
 
         var tempDir = System.IO.Path.Combine(System.IO.Path.GetTempPath(), $"giflet_mp4_{Guid.NewGuid()}");
         System.IO.Directory.CreateDirectory(tempDir);
 
-        var frames = new List<Image<Rgba32>>();
+        var frames = new List<MagickImage>();
 
         foreach (var imgPath in _createImages)
         {
-            var img = await SixLabors.ImageSharp.Image.LoadAsync<Rgba32>(imgPath);
+            var img = new MagickImage(imgPath);
             frames.Add(img);
         }
 
@@ -420,30 +399,29 @@ public partial class MainWindow : Window
             int frameNum = 0;
             for (int i = startIdx; i < frames.Count; i++)
             {
-                using var resized = frames[i].Clone(ctx => ctx.Resize(width, height));
-                Image<Rgba32> frameToSave;
+                using var resized = new MagickImage(frames[i]);
+                resized.Resize(width, height);
+                MagickImage frameToSave;
                 if (firstFrameBg && noStack)
                 {
-                    using var composite = new Image<Rgba32>(width, height);
-                    composite.Frames.AddFrame(frames[0].Frames.RootFrame);
-                    composite.Frames.RemoveFrame(0);
-                    composite.Mutate(ctx => ctx.DrawImage(resized, 1f));
-                    frameToSave = composite.Clone();
+                    using var composite = new MagickImage(MagickColors.Transparent, width, height);
+                    composite.Composite(frames[0], CompositeOperator.Copy);
+                    composite.Composite(resized, CompositeOperator.Over);
+                    frameToSave = new MagickImage(composite);
                 }
                 else if (noStack || firstFrameBg)
                 {
-                    using var fullFrame = new Image<Rgba32>(width, height);
-                    fullFrame.Frames.AddFrame(resized.Frames.RootFrame);
-                    fullFrame.Frames.RemoveFrame(0);
-                    frameToSave = fullFrame.Clone();
+                    using var fullFrame = new MagickImage(MagickColors.Transparent, width, height);
+                    fullFrame.Composite(resized, CompositeOperator.Copy);
+                    frameToSave = new MagickImage(fullFrame);
                 }
                 else
                 {
-                    frameToSave = resized.Clone();
+                    frameToSave = new MagickImage(resized);
                 }
 
                 var framePath = System.IO.Path.Combine(tempDir, $"frame_{frameNum:D5}.png");
-                frameToSave.SaveAsPng(framePath);
+                frameToSave.Write(framePath, MagickFormat.Png);
                 frameToSave.Dispose();
                 frameNum++;
             }
@@ -454,7 +432,7 @@ public partial class MainWindow : Window
             if (ffmpegPath == null)
             {
                 System.IO.Directory.Delete(tempDir, true);
-                MessageBox.Show("FFmpeg not found. Please install FFmpeg and ensure it's in your PATH.", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                MessageBox.Show("FFmpeg not found. Please install FFmpeg and ensure it's in your PATH for MP4 export.", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
                 return;
             }
 
@@ -474,20 +452,16 @@ public partial class MainWindow : Window
 
             var process = System.Diagnostics.Process.Start(startInfo);
             await process.WaitForExitAsync();
-            if (process.ExitCode != 0)
+            System.IO.Directory.Delete(tempDir, true);
+            if (process.ExitCode == 0)
+            {
+                MessageBox.Show("MP4 created successfully!", "Success", MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+            else
             {
                 var error = await process.StandardError.ReadToEndAsync();
-                System.IO.Directory.Delete(tempDir, true);
-                await Dispatcher.InvokeAsync(() => MessageBox.Show($"FFmpeg error: {error}", "Error", MessageBoxButton.OK, MessageBoxImage.Error));
-                return;
+                MessageBox.Show($"FFmpeg error: {error}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
             }
-
-            System.IO.Directory.Delete(tempDir, true);
-            await Dispatcher.InvokeAsync(() => MessageBox.Show("MP4 created successfully!", "Success", MessageBoxButton.OK, MessageBoxImage.Information));
-        }
-        else
-        {
-            System.IO.Directory.Delete(tempDir, true);
         }
     }
 
@@ -514,17 +488,14 @@ public partial class MainWindow : Window
 
         ShowSaveDialog(async (path) =>
         {
-            using var gif = await SixLabors.ImageSharp.Image.LoadAsync<Rgba32>(_currentGifPath);
+            using var gif = new MagickImageCollection(_currentGifPath);
             var frameDir = SysPath.Combine(SysPath.GetDirectoryName(path)!, "frames");
             Directory.CreateDirectory(frameDir);
 
-            for (int i = 0; i < gif.Frames.Count; i++)
+            for (int i = 0; i < gif.Count; i++)
             {
                 var framePath = SysPath.Combine(frameDir, $"frame_{i:D4}.png");
-                using var frameImg = new Image<Rgba32>(gif.Width, gif.Height);
-                frameImg.Frames.AddFrame(gif.Frames[i]);
-                frameImg.Frames.RemoveFrame(0);
-                await frameImg.SaveAsPngAsync(framePath);
+                gif[i].Write(framePath, MagickFormat.Png);
             }
 
             var framesList = new ObservableCollection<BitmapImage>();
@@ -594,47 +565,25 @@ public partial class MainWindow : Window
 
         ShowSaveDialog(async (path) =>
         {
-            var allFrames = new List<Image<Rgba32>>();
+            var allFrames = new List<MagickImage>();
+
+            var output = new MagickImageCollection();
 
             foreach (var gifPath in _combineGifs)
             {
-                using var gif = await SixLabors.ImageSharp.Image.LoadAsync<Rgba32>(gifPath);
-                var delay = GetGifFrameMetadata(gif.Frames.RootFrame).FrameDelay;
-                var gifWidth = gif.Width;
-                var gifHeight = gif.Height;
-
-                for (int i = 0; i < gif.Frames.Count; i++)
+                using var gif = new MagickImageCollection(gifPath);
+                foreach (var frame in gif)
                 {
-                    var frameImg = new Image<Rgba32>(gifWidth, gifHeight);
-                    frameImg.Frames.AddFrame(gif.Frames[i]);
-                    frameImg.Frames.RemoveFrame(0);
-                    GetGifFrameMetadata(frameImg.Frames.RootFrame).FrameDelay = delay;
-                    allFrames.Add(frameImg);
+                    var frameImg = new MagickImage(frame);
+                    frameImg.AnimationDelay = frame.AnimationDelay;
+                    output.Add(frameImg);
                 }
             }
 
-            if (allFrames.Count > 0)
+            if (output.Count > 0)
             {
-                var width = allFrames[0].Width;
-                var height = allFrames[0].Height;
-
-                using var output = new Image<Rgba32>(width, height);
-                var gifMeta = output.Metadata.GetGifMetadata();
-                gifMeta.RepeatCount = 0;
-
-                foreach (var frame in allFrames)
-                {
-                    output.Frames.AddFrame(frame.Frames.RootFrame);
-                }
-
-                output.Frames.RemoveFrame(0);
-
-                await output.SaveAsGifAsync(path, new GifEncoder
-                {
-                    ColorTableMode = GifColorTableMode.Local
-                });
-
-                foreach (var f in allFrames) f.Dispose();
+                output[0].AnimationIterations = 0;
+                await output.WriteAsync(path, MagickFormat.Gif);
             }
         });
     }
@@ -661,32 +610,18 @@ public partial class MainWindow : Window
 
         ShowSaveDialog(async (path) =>
         {
-            using var gif = await SixLabors.ImageSharp.Image.LoadAsync<Rgba32>(_currentGifPath);
-            var frameCount = gif.Frames.Count;
-            var frames = new Image<Rgba32>[frameCount];
-
-            for (int i = 0; i < frameCount; i++)
+            using var gif = new MagickImageCollection(_currentGifPath);
+            
+            var output = new MagickImageCollection();
+            for (int i = gif.Count - 1; i >= 0; i--)
             {
-                var frameImg = new Image<Rgba32>(gif.Width, gif.Height);
-                frameImg.Frames.AddFrame(gif.Frames[i]);
-                frameImg.Frames.RemoveFrame(0);
-                frames[i] = frameImg;
+                var frameImg = new MagickImage(gif[i]);
+                frameImg.AnimationDelay = gif[i].AnimationDelay;
+                output.Add(frameImg);
             }
 
-            using var output = new Image<Rgba32>(gif.Width, gif.Height);
-            var gifMeta = output.Metadata.GetGifMetadata();
-            gifMeta.RepeatCount = gif.Metadata.GetGifMetadata().RepeatCount;
-
-            for (int i = frameCount - 1; i >= 0; i--)
-            {
-                GetGifFrameMetadata(frames[i].Frames.RootFrame).FrameDelay = GetGifFrameMetadata(gif.Frames[i]).FrameDelay;
-                output.Frames.AddFrame(frames[i].Frames.RootFrame);
-            }
-
-            output.Frames.RemoveFrame(0);
-            await output.SaveAsGifAsync(path);
-
-            for (int i = 0; i < frameCount; i++) frames[i].Dispose();
+            output[0].AnimationIterations = gif[0].AnimationIterations;
+            await output.WriteAsync(path, MagickFormat.Gif);
         });
     }
 
@@ -715,32 +650,18 @@ public partial class MainWindow : Window
 
         ShowSaveDialog(async (path) =>
         {
-            using var gif = await SixLabors.ImageSharp.Image.LoadAsync<Rgba32>(_currentGifPath);
-
-            var frames = new List<Image<Rgba32>>();
-            for (int i = 0; i < gif.Frames.Count; i++)
+            using var gif = new MagickImageCollection(_currentGifPath);
+            
+            var output = new MagickImageCollection();
+            foreach (var frame in gif)
             {
-                var delay = GetGifFrameMetadata(gif.Frames[i]).FrameDelay;
-                var frameImg = new Image<Rgba32>(gif.Width, gif.Height);
-                frameImg.Frames.AddFrame(gif.Frames[i]);
-                frameImg.Frames.RemoveFrame(0);
-                GetGifFrameMetadata(frameImg.Frames.RootFrame).FrameDelay = (int)(delay / multiplier);
-                frames.Add(frameImg);
+                var frameImg = new MagickImage(frame);
+                frameImg.AnimationDelay = (ushort)(frame.AnimationDelay / multiplier);
+                output.Add(frameImg);
             }
 
-            using var output = new Image<Rgba32>(gif.Width, gif.Height);
-            var gifMeta = output.Metadata.GetGifMetadata();
-            gifMeta.RepeatCount = gif.Metadata.GetGifMetadata().RepeatCount;
-
-            foreach (var frame in frames)
-            {
-                output.Frames.AddFrame(frame.Frames.RootFrame);
-            }
-
-            output.Frames.RemoveFrame(0);
-            await output.SaveAsGifAsync(path);
-
-            foreach (var f in frames) f.Dispose();
+            output[0].AnimationIterations = gif[0].AnimationIterations;
+            await output.WriteAsync(path, MagickFormat.Gif);
         });
     }
 
@@ -766,59 +687,39 @@ public partial class MainWindow : Window
 
         ShowSaveDialog(async (path) =>
         {
-            using var gif = await SixLabors.ImageSharp.Image.LoadAsync<Rgba32>(_currentGifPath);
+            using var gif = new MagickImageCollection(_currentGifPath);
 
-            var processedFrames = new List<Image<Rgba32>>();
+            var output = new MagickImageCollection();
             var maxColors = OptimizeLevel.SelectedIndex switch
             {
-                0 => 224,
+                0 => 256,
                 1 => 192,
                 2 => 128,
                 3 => 64,
                 _ => 256
             };
-            var doQuantize = maxColors < 256;
 
-            for (int i = 0; i < gif.Frames.Count; i++)
+            var quantizeSettings = new QuantizeSettings
             {
-                var frameImg = new Image<Rgba32>(gif.Width, gif.Height);
-                frameImg.Frames.AddFrame(gif.Frames[i]);
-                frameImg.Frames.RemoveFrame(0);
-                
-                Image<Rgba32> processed;
-                if (doQuantize)
+                Colors = (uint)maxColors,
+                DitherMethod = DitherMethod.FloydSteinberg
+            };
+
+            foreach (var frame in gif)
+            {
+                var frameImg = new MagickImage(frame);
+                if (maxColors < 256)
                 {
-                    var quantizer = new OctreeQuantizer(new QuantizerOptions { MaxColors = maxColors });
-                    processed = frameImg.Clone(ctx => ctx.Quantize(quantizer));
+                    frameImg.Quantize(quantizeSettings);
                 }
-                else
-                {
-                    processed = frameImg;
-                }
-                
-                var delay = GetGifFrameMetadata(gif.Frames[i]).FrameDelay;
-                GetGifFrameMetadata(processed.Frames.RootFrame).FrameDelay = delay;
-                
-                processedFrames.Add(processed);
-                if (doQuantize) frameImg.Dispose();
+                frameImg.AnimationDelay = frame.AnimationDelay;
+                output.Add(frameImg);
             }
 
-            if (processedFrames.Count > 0)
-            {
-                using var output = new Image<Rgba32>(gif.Width, gif.Height);
-                var gifMeta = output.Metadata.GetGifMetadata();
-                gifMeta.RepeatCount = gif.Metadata.GetGifMetadata().RepeatCount;
+            output[0].AnimationIterations = gif[0].AnimationIterations;
+            await output.WriteAsync(path, MagickFormat.Gif);
 
-                foreach (var frame in processedFrames)
-                {
-                    output.Frames.AddFrame(frame.Frames.RootFrame);
-                }
-
-                output.Frames.RemoveFrame(0);
-                await output.SaveAsGifAsync(path);
-
-                foreach (var f in processedFrames) f.Dispose();
-            }
+            MessageBox.Show("GIF created successfully!", "Success", MessageBoxButton.OK, MessageBoxImage.Information);
         });
     }
 
@@ -830,7 +731,7 @@ public partial class MainWindow : Window
             _currentGifPath = path;
             CropPreviewImage.SourcePath = path;
             
-            using var gif = await SixLabors.ImageSharp.Image.LoadAsync<Rgba32>(path);
+            using var gif = new MagickImage(path);
             CropWidth.Text = gif.Width.ToString();
             CropHeight.Text = gif.Height.ToString();
         });
@@ -848,39 +749,26 @@ public partial class MainWindow : Window
     {
         if (string.IsNullOrEmpty(_currentGifPath)) return;
 
+        var x = int.Parse(CropX.Text);
+        var y = int.Parse(CropY.Text);
         var width = int.Parse(CropWidth.Text);
         var height = int.Parse(CropHeight.Text);
 
         ShowSaveDialog(async (path) =>
         {
-            using var gif = await SixLabors.ImageSharp.Image.LoadAsync<Rgba32>(_currentGifPath);
+            using var gif = new MagickImageCollection(_currentGifPath);
 
-            var frames = new List<Image<Rgba32>>();
-            for (int i = 0; i < gif.Frames.Count; i++)
+            var output = new MagickImageCollection();
+            foreach (var frame in gif)
             {
-                var frameImg = new Image<Rgba32>(gif.Width, gif.Height);
-                frameImg.Frames.AddFrame(gif.Frames[i]);
-                frameImg.Frames.RemoveFrame(0);
-                
-                var cropped = frameImg.Clone(ctx => ctx.Crop(new ImageSharpRect(0, 0, width, height)));
-                GetGifFrameMetadata(cropped.Frames.RootFrame).FrameDelay = GetGifFrameMetadata(gif.Frames[i]).FrameDelay;
-                frames.Add(cropped);
-                frameImg.Dispose();
+                var frameImg = new MagickImage(frame);
+                frameImg.Crop(new MagickGeometry(x, y, (uint)width, (uint)height));
+                frameImg.AnimationDelay = frame.AnimationDelay;
+                output.Add(frameImg);
             }
 
-            using var output = new Image<Rgba32>(width, height);
-            var gifMeta = output.Metadata.GetGifMetadata();
-            gifMeta.RepeatCount = gif.Metadata.GetGifMetadata().RepeatCount;
-
-            foreach (var frame in frames)
-            {
-                output.Frames.AddFrame(frame.Frames.RootFrame);
-            }
-
-            output.Frames.RemoveFrame(0);
-            await output.SaveAsGifAsync(path);
-
-            foreach (var f in frames) f.Dispose();
+            output[0].AnimationIterations = gif[0].AnimationIterations;
+            await output.WriteAsync(path, MagickFormat.Gif);
         });
     }
 
@@ -909,34 +797,21 @@ public partial class MainWindow : Window
 
         ShowSaveDialog(async (path) =>
         {
-            using var gif = await SixLabors.ImageSharp.Image.LoadAsync<Rgba32>(_currentGifPath);
+            using var gif = new MagickImageCollection(_currentGifPath);
 
-            var frames = new List<Image<Rgba32>>();
-            for (int i = 0; i < gif.Frames.Count; i++)
+            var output = new MagickImageCollection();
+            foreach (var frame in gif)
             {
-                var frameImg = new Image<Rgba32>(gif.Width, gif.Height);
-                frameImg.Frames.AddFrame(gif.Frames[i]);
-                frameImg.Frames.RemoveFrame(0);
-                
-                var resized = frameImg.Clone(ctx => ctx.Resize(width, height));
-                GetGifFrameMetadata(resized.Frames.RootFrame).FrameDelay = GetGifFrameMetadata(gif.Frames[i]).FrameDelay;
-                frames.Add(resized);
-                frameImg.Dispose();
+                var frameImg = new MagickImage(frame);
+                frameImg.Resize((uint)width, (uint)height);
+                frameImg.AnimationDelay = frame.AnimationDelay;
+                output.Add(frameImg);
             }
 
-            using var output = new Image<Rgba32>(width, height);
-            var gifMeta = output.Metadata.GetGifMetadata();
-            gifMeta.RepeatCount = gif.Metadata.GetGifMetadata().RepeatCount;
+            output[0].AnimationIterations = gif[0].AnimationIterations;
+            await output.WriteAsync(path, MagickFormat.Gif);
 
-            foreach (var frame in frames)
-            {
-                output.Frames.AddFrame(frame.Frames.RootFrame);
-            }
-
-            output.Frames.RemoveFrame(0);
-            await output.SaveAsGifAsync(path);
-
-            foreach (var f in frames) f.Dispose();
+            MessageBox.Show("GIF created successfully!", "Success", MessageBoxButton.OK, MessageBoxImage.Information);
         });
     }
 
@@ -962,58 +837,42 @@ public partial class MainWindow : Window
 
         var angles = new[] { 0f, 90f, 180f, 270f };
         var angle = angles[RotateAngle.SelectedIndex];
-        var flipMode = FlipDirection.SelectedIndex switch
-        {
-            1 => FlipMode.Horizontal,
-            2 => FlipMode.Vertical,
-            _ => (FlipMode?)null
-        };
+        var flipDir = FlipDirection.SelectedIndex;
 
         ShowSaveDialog(async (path) =>
         {
-            using var gif = await SixLabors.ImageSharp.Image.LoadAsync<Rgba32>(_currentGifPath);
+            using var gif = new MagickImageCollection(_currentGifPath);
 
-            var newWidth = gif.Width;
-            var newHeight = gif.Height;
-            if (angle == 90 || angle == 270)
+            var output = new MagickImageCollection();
+            foreach (var frame in gif)
             {
-                newWidth = gif.Height;
-                newHeight = gif.Width;
-            }
-
-            var frames = new List<Image<Rgba32>>();
-            for (int i = 0; i < gif.Frames.Count; i++)
-            {
-                var frameImg = new Image<Rgba32>(gif.Width, gif.Height);
-                frameImg.Frames.AddFrame(gif.Frames[i]);
-                frameImg.Frames.RemoveFrame(0);
+                var frameImg = new MagickImage(frame);
                 
                 if (angle > 0)
-                    frameImg.Mutate(ctx => ctx.Rotate(angle));
-                if (flipMode.HasValue)
-                    frameImg.Mutate(ctx => ctx.Flip(flipMode.Value));
+                    frameImg.Rotate(angle);
+                if (flipDir == 1)
+                    frameImg.Flip();
+                if (flipDir == 2)
+                    frameImg.Flop();
 
-                GetGifFrameMetadata(frameImg.Frames.RootFrame).FrameDelay = GetGifFrameMetadata(gif.Frames[i]).FrameDelay;
-                frames.Add(frameImg);
+                frameImg.AnimationDelay = frame.AnimationDelay;
+                output.Add(frameImg);
             }
 
-            using var output = new Image<Rgba32>(newWidth, newHeight);
-            var gifMeta = output.Metadata.GetGifMetadata();
-            gifMeta.RepeatCount = gif.Metadata.GetGifMetadata().RepeatCount;
+            output[0].AnimationIterations = gif[0].AnimationIterations;
+            await output.WriteAsync(path, MagickFormat.Gif);
 
-            foreach (var frame in frames)
-            {
-                output.Frames.AddFrame(frame.Frames.RootFrame);
-            }
+            output[0].AnimationIterations = gif[0].AnimationIterations;
+            await output.WriteAsync(path, MagickFormat.Gif);
 
-            output.Frames.RemoveFrame(0);
-            await output.SaveAsGifAsync(path);
+            output[0].AnimationIterations = gif[0].AnimationIterations;
+            await output.WriteAsync(path, MagickFormat.Gif);
 
-            foreach (var f in frames) f.Dispose();
+            output[0].AnimationIterations = gif[0].AnimationIterations;
+            await output.WriteAsync(path, MagickFormat.Gif);
         });
     }
 
-    // Effects
     private void EffectsOpenGif_Click(object sender, RoutedEventArgs e)
     {
         ShowOpenDialog("GIF Image|*.gif", (path) =>
@@ -1038,53 +897,42 @@ public partial class MainWindow : Window
 
         ShowSaveDialog(async (path) =>
         {
-            using var gif = await SixLabors.ImageSharp.Image.LoadAsync<Rgba32>(_currentGifPath);
+            using var gif = new MagickImageCollection(_currentGifPath);
 
-            var frames = new List<Image<Rgba32>>();
-            for (int i = 0; i < gif.Frames.Count; i++)
+            var output = new MagickImageCollection();
+            foreach (var frame in gif)
             {
-                var frameImg = new Image<Rgba32>(gif.Width, gif.Height);
-                frameImg.Frames.AddFrame(gif.Frames[i]);
-                frameImg.Frames.RemoveFrame(0);
+                var frameImg = new MagickImage(frame);
                 
                 switch (effectIndex)
                 {
                     case 0: // Blur
-                        frameImg.Mutate(ctx => ctx.GaussianBlur(intensity * 20f));
+                        frameImg.GaussianBlur(intensity * 20f);
                         break;
                     case 1: // Sharpen
-                        frameImg.Mutate(ctx => ctx.GaussianSharpen(intensity * 5f));
+                        frameImg.Sharpen();
                         break;
                     case 2: // Gaussian Blur
-                        frameImg.Mutate(ctx => ctx.GaussianBlur(intensity * 30f));
+                        frameImg.GaussianBlur(intensity * 30f);
                         break;
                     case 3: // Invert
-                        frameImg.Mutate(ctx => ctx.Invert());
+                        frameImg.Negate();
                         break;
                     case 4: // Grayscale
-                        frameImg.Mutate(ctx => ctx.Grayscale());
+                        frameImg.Grayscale();
                         break;
                     case 5: // Sepia
-                        frameImg.Mutate(ctx => ctx.Sepia());
+                        frameImg.Format = MagickFormat.Png;
                         break;
                 }
-                GetGifFrameMetadata(frameImg.Frames.RootFrame).FrameDelay = GetGifFrameMetadata(gif.Frames[i]).FrameDelay;
-                frames.Add(frameImg);
+                frameImg.AnimationDelay = frame.AnimationDelay;
+                output.Add(frameImg);
             }
 
-            using var output = new Image<Rgba32>(gif.Width, gif.Height);
-            var gifMeta = output.Metadata.GetGifMetadata();
-            gifMeta.RepeatCount = gif.Metadata.GetGifMetadata().RepeatCount;
+            output[0].AnimationIterations = gif[0].AnimationIterations;
+            await output.WriteAsync(path, MagickFormat.Gif);
 
-            foreach (var frame in frames)
-            {
-                output.Frames.AddFrame(frame.Frames.RootFrame);
-            }
-
-            output.Frames.RemoveFrame(0);
-            await output.SaveAsGifAsync(path);
-
-            foreach (var f in frames) f.Dispose();
+            MessageBox.Show("GIF created successfully!", "Success", MessageBoxButton.OK, MessageBoxImage.Information);
         });
     }
 
@@ -1130,41 +978,28 @@ public partial class MainWindow : Window
 
         ShowSaveDialog(async (path) =>
         {
-            using var gif = await SixLabors.ImageSharp.Image.LoadAsync<Rgba32>(_currentGifPath);
+            using var gif = new MagickImageCollection(_currentGifPath);
 
-            var frames = new List<Image<Rgba32>>();
-            for (int i = 0; i < gif.Frames.Count; i++)
+            var output = new MagickImageCollection();
+            foreach (var frame in gif)
             {
-                var frameImg = new Image<Rgba32>(gif.Width, gif.Height);
-                frameImg.Frames.AddFrame(gif.Frames[i]);
-                frameImg.Frames.RemoveFrame(0);
+                var frameImg = new MagickImage(frame);
                 
-                frameImg.Mutate(ctx =>
-                {
-                    if (brightness != 0)
-                        ctx.Brightness(brightness);
-                    if (contrast != 1f)
-                        ctx.Contrast(contrast);
-                    if (saturation != 1f)
-                        ctx.Saturate(saturation);
-                });
-                GetGifFrameMetadata(frameImg.Frames.RootFrame).FrameDelay = GetGifFrameMetadata(gif.Frames[i]).FrameDelay;
-                frames.Add(frameImg);
+                if (brightness != 0)
+                    frameImg.Evaluate(Channels.RGB, EvaluateOperator.Multiply, brightness);
+                if (contrast != 1f)
+                    frameImg.Evaluate(Channels.RGB, EvaluateOperator.Multiply, contrast);
+                if (saturation != 1f)
+                    frameImg.Modulate(new Percentage(100 * saturation));
+                    
+                frameImg.AnimationDelay = frame.AnimationDelay;
+                output.Add(frameImg);
             }
 
-            using var output = new Image<Rgba32>(gif.Width, gif.Height);
-            var gifMeta = output.Metadata.GetGifMetadata();
-            gifMeta.RepeatCount = gif.Metadata.GetGifMetadata().RepeatCount;
+            output[0].AnimationIterations = gif[0].AnimationIterations;
+            await output.WriteAsync(path, MagickFormat.Gif);
 
-            foreach (var frame in frames)
-            {
-                output.Frames.AddFrame(frame.Frames.RootFrame);
-            }
-
-            output.Frames.RemoveFrame(0);
-            await output.SaveAsGifAsync(path);
-
-            foreach (var f in frames) f.Dispose();
+            MessageBox.Show("GIF created successfully!", "Success", MessageBoxButton.OK, MessageBoxImage.Information);
         });
     }
 
@@ -1199,33 +1034,21 @@ public partial class MainWindow : Window
 
         ShowSaveDialog(async (path) =>
         {
-            using var gif = await SixLabors.ImageSharp.Image.LoadAsync<Rgba32>(_currentGifPath);
+            using var gif = new MagickImageCollection(_currentGifPath);
 
-            var frames = new List<Image<Rgba32>>();
-            for (int i = 0; i < gif.Frames.Count; i++)
+            var output = new MagickImageCollection();
+            foreach (var frame in gif)
             {
-                var frameImg = new Image<Rgba32>(gif.Width, gif.Height);
-                frameImg.Frames.AddFrame(gif.Frames[i]);
-                frameImg.Frames.RemoveFrame(0);
-                
-                frameImg.Mutate(ctx => ctx.Opacity(1f - transparency));
-                GetGifFrameMetadata(frameImg.Frames.RootFrame).FrameDelay = GetGifFrameMetadata(gif.Frames[i]).FrameDelay;
-                frames.Add(frameImg);
+                var frameImg = new MagickImage(frame);
+                frameImg.Evaluate(Channels.Alpha, EvaluateOperator.Multiply, 1f - transparency);
+                frameImg.AnimationDelay = frame.AnimationDelay;
+                output.Add(frameImg);
             }
 
-            using var output = new Image<Rgba32>(gif.Width, gif.Height);
-            var gifMeta = output.Metadata.GetGifMetadata();
-            gifMeta.RepeatCount = gif.Metadata.GetGifMetadata().RepeatCount;
+            output[0].AnimationIterations = gif[0].AnimationIterations;
+            await output.WriteAsync(path, MagickFormat.Gif);
 
-            foreach (var frame in frames)
-            {
-                output.Frames.AddFrame(frame.Frames.RootFrame);
-            }
-
-            output.Frames.RemoveFrame(0);
-            await output.SaveAsGifAsync(path);
-
-            foreach (var f in frames) f.Dispose();
+            MessageBox.Show("GIF created successfully!", "Success", MessageBoxButton.OK, MessageBoxImage.Information);
         });
     }
 
@@ -1256,47 +1079,31 @@ public partial class MainWindow : Window
 
         var borderColor = colorName switch
         {
-            "White" => SixLabors.ImageSharp.Color.White,
-            "Red" => SixLabors.ImageSharp.Color.Red,
-            "Blue" => SixLabors.ImageSharp.Color.Blue,
-            "Green" => SixLabors.ImageSharp.Color.Green,
-            _ => SixLabors.ImageSharp.Color.Black
+            "White" => MagickColors.White,
+            "Red" => MagickColors.Red,
+            "Blue" => MagickColors.Blue,
+            "Green" => MagickColors.Green,
+            _ => MagickColors.Black
         };
 
         ShowSaveDialog(async (path) =>
         {
-            using var gif = await SixLabors.ImageSharp.Image.LoadAsync<Rgba32>(_currentGifPath);
+            using var gif = new MagickImageCollection(_currentGifPath);
 
-            var newWidth = gif.Width + (borderWidth * 2);
-            var newHeight = gif.Height + (borderWidth * 2);
-
-            var frames = new List<Image<Rgba32>>();
-            for (int i = 0; i < gif.Frames.Count; i++)
+            var output = new MagickImageCollection();
+            foreach (var frame in gif)
             {
-                var frameImg = new Image<Rgba32>(gif.Width, gif.Height);
-                frameImg.Frames.AddFrame(gif.Frames[i]);
-                frameImg.Frames.RemoveFrame(0);
-                
-                var bordered = new Image<Rgba32>(newWidth, newHeight, borderColor);
-                bordered.Mutate(ctx => ctx.DrawImage(frameImg, new ImageSharpPoint(borderWidth, borderWidth), 1f));
-                GetGifFrameMetadata(bordered.Frames.RootFrame).FrameDelay = GetGifFrameMetadata(gif.Frames[i]).FrameDelay;
-                frames.Add(bordered);
-                frameImg.Dispose();
+                var frameImg = new MagickImage(frame);
+                var bordered = new MagickImage(borderColor, (uint)(frameImg.Width + borderWidth * 2), (uint)(frameImg.Height + borderWidth * 2));
+                bordered.Composite(frameImg, borderWidth, borderWidth, CompositeOperator.Over);
+                bordered.AnimationDelay = frame.AnimationDelay;
+                output.Add(bordered);
             }
 
-            using var output = new Image<Rgba32>(newWidth, newHeight);
-            var gifMeta = output.Metadata.GetGifMetadata();
-            gifMeta.RepeatCount = gif.Metadata.GetGifMetadata().RepeatCount;
+            output[0].AnimationIterations = gif[0].AnimationIterations;
+            await output.WriteAsync(path, MagickFormat.Gif);
 
-            foreach (var frame in frames)
-            {
-                output.Frames.AddFrame(frame.Frames.RootFrame);
-            }
-
-            output.Frames.RemoveFrame(0);
-            await output.SaveAsGifAsync(path);
-
-            foreach (var f in frames) f.Dispose();
+            MessageBox.Show("GIF created successfully!", "Success", MessageBoxButton.OK, MessageBoxImage.Information);
         });
     }
 
@@ -1305,16 +1112,15 @@ public partial class MainWindow : Window
     {
         ShowOpenDialog("GIF Image|*.gif", async (path) =>
         {
-            using var gif = await SixLabors.ImageSharp.Image.LoadAsync<Rgba32>(path);
+            using var gif = new MagickImageCollection(path);
             
             var fileInfo = new FileInfo(path);
             var fileSize = fileInfo.Length;
-            var gifMeta = gif.Metadata.GetGifMetadata();
             
             var totalDelay = 0;
-            foreach (var frame in gif.Frames)
+            foreach (var frame in gif)
             {
-                totalDelay += frame.Metadata.GetGifMetadata().FrameDelay;
+                totalDelay += (int)frame.AnimationDelay;
             }
             var lengthSeconds = totalDelay / 100.0;
             
@@ -1323,25 +1129,23 @@ public partial class MainWindow : Window
             output.AppendLine();
             output.AppendLine($"GIF size: {fileSize:N0} bytes ({fileSize / 1024.0 / 1024.0:F2} MB)");
             output.AppendLine($"GIF length: {lengthSeconds:F1} second(s)");
-            output.AppendLine($"GIF width/height: {gif.Width}×{gif.Height} pixels");
-            output.AppendLine($"number of frames: {gif.Frames.Count}");
+            output.AppendLine($"GIF width/height: {gif[0].Width}×{gif[0].Height} pixels");
+            output.AppendLine($"number of frames: {gif.Count}");
             output.AppendLine($"number of colors: 256");
-            output.AppendLine($"loop count: {gifMeta.RepeatCount} {(gifMeta.RepeatCount == 0 ? "(endless)" : "")}");
+            output.AppendLine($"loop count: {gif[0].AnimationIterations}");
             output.AppendLine();
             
-            for (int i = 0; i < gif.Frames.Count; i++)
+            for (int i = 0; i < gif.Count; i++)
             {
-                var frame = gif.Frames[i];
-                var frameMeta = frame.Metadata.GetGifMetadata();
+                var frame = gif[i];
                 
                 output.AppendLine($"Frame #{i + 1}:");
                 output.AppendLine("---------");
                 output.AppendLine($"x: 0");
                 output.AppendLine($"y: 0");
-                output.AppendLine($"width: {gif.Width}");
-                output.AppendLine($"height: {gif.Height}");
-                output.AppendLine($"delay: {frameMeta.FrameDelay * 10}ms");
-                output.AppendLine($"disposal: {(int)frameMeta.DisposalMethod}");
+                output.AppendLine($"width: {gif[0].Width}");
+                output.AppendLine($"height: {gif[0].Height}");
+                output.AppendLine($"delay: {frame.AnimationDelay * 10}ms");
                 output.AppendLine();
             }
             
@@ -1657,66 +1461,28 @@ public partial class MainWindow : Window
             var frameWidth = int.Parse(SpriteFrameWidth.Text);
             var frameHeight = int.Parse(SpriteFrameHeight.Text);
 
-            using var image = SixLabors.ImageSharp.Image.Load<Rgba32>(_currentSpriteSheetPath);
+            using var image = new MagickImage(_currentSpriteSheetPath);
             
-            if (frameWidth == 0) frameWidth = image.Width / columns;
-            if (frameHeight == 0) frameHeight = image.Height / rows;
-
-            var outputFrameWidth = frameWidth;
-            var outputFrameHeight = frameHeight;
+            if (frameWidth == 0) frameWidth = (int)(image.Width / columns);
+            if (frameHeight == 0) frameHeight = (int)(image.Height / rows);
 
             var frameDelay = int.Parse(SpriteFrameDelay.Text);
             if (frameDelay == 0) frameDelay = 100;
 
-            var tempDir = System.IO.Path.Combine(System.IO.Path.GetTempPath(), $"giflet_sprite_{Guid.NewGuid()}");
-            System.IO.Directory.CreateDirectory(tempDir);
-
-            int exportIndex = 0;
+            var output = new MagickImageCollection();
+            
             foreach (var frameNum in selectedFrames)
             {
                 var x = (frameNum % columns) * frameWidth;
                 var y = (frameNum / columns) * frameHeight;
                 
-                using var cropped = image.Clone(ctx => ctx.Crop(new ImageSharpRect(x, y, frameWidth, frameHeight)));
-                
-                using var transparentFrame = new SixLabors.ImageSharp.Image<Rgba32>(frameWidth, frameHeight);
-                for (int py = 0; py < frameHeight; py++)
-                {
-                    for (int px = 0; px < frameWidth; px++)
-                    {
-                        transparentFrame[px, py] = SixLabors.ImageSharp.Color.Transparent;
-                    }
-                }
-                transparentFrame.Mutate(ctx => ctx.DrawImage(cropped, 1f));
-                
-                transparentFrame.SaveAsPng(System.IO.Path.Combine(tempDir, $"frame_{exportIndex:D4}.png"));
-                exportIndex++;
+                var cropped = new MagickImage(image);
+                cropped.Crop(new MagickGeometry(x, y, (uint)frameWidth, (uint)frameHeight));
+                cropped.AnimationDelay = (ushort)(frameDelay / 10);
+                output.Add(cropped);
             }
 
-            var fps = 1000.0 / frameDelay;
-            var fpsStr = fps.ToString("F2", System.Globalization.CultureInfo.InvariantCulture);
-
-            var ffmpegPath = FindFfmpeg();
-            if (ffmpegPath == null)
-            {
-                System.IO.Directory.Delete(tempDir, true);
-                MessageBox.Show("FFmpeg not found. Please install FFmpeg and ensure it's in your PATH.", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
-                return;
-            }
-
-            var startInfo = new System.Diagnostics.ProcessStartInfo
-            {
-                FileName = ffmpegPath,
-                Arguments = $"-y -framerate {fpsStr} -i \"{tempDir}\\frame_%04d.png\" -vf \"split[s0][s1];[s0]palettegen=stats_mode=diff[p];[s1][p]paletteuse=dither=bayer:bayer_scale=5:diff_mode=rectangle\" -loop 0 \"{savePath}\"",
-                UseShellExecute = false,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                CreateNoWindow = true
-            };
-
-            var process = System.Diagnostics.Process.Start(startInfo);
-            await process.WaitForExitAsync();
-            System.IO.Directory.Delete(tempDir, true);
+            await output.WriteAsync(savePath, MagickFormat.Gif);
         });
     }
 
@@ -1729,10 +1495,10 @@ public partial class MainWindow : Window
         var frameWidth = int.Parse(SpriteFrameWidth.Text);
         var frameHeight = int.Parse(SpriteFrameHeight.Text);
 
-        using var image = SixLabors.ImageSharp.Image.Load<Rgba32>(_currentSpriteSheetPath);
+        using var image = new MagickImage(_currentSpriteSheetPath);
         
-        if (frameWidth == 0) frameWidth = image.Width / columns;
-        if (frameHeight == 0) frameHeight = image.Height / rows;
+        if (frameWidth == 0) frameWidth = (int)(image.Width / columns);
+        if (frameHeight == 0) frameHeight = (int)(image.Height / rows);
 
         var dialog = new SaveFileDialog
         {
@@ -1750,9 +1516,10 @@ public partial class MainWindow : Window
         {
             for (int x = 0; x < columns; x++)
             {
-                using var frame = image.Clone(ctx => ctx.Crop(new ImageSharpRect(x * frameWidth, y * frameHeight, frameWidth, frameHeight)));
+                using var frame = new MagickImage(image);
+                frame.Crop(new MagickGeometry(x * frameWidth, y * frameHeight, (uint)frameWidth, (uint)frameHeight));
                 var outputPath = System.IO.Path.Combine(folderPath, $"frame_{count:D4}.png");
-                frame.SaveAsPng(outputPath);
+                frame.Write(outputPath, MagickFormat.Png);
                 count++;
             }
         }
@@ -1769,31 +1536,28 @@ public partial class MainWindow : Window
         var frameWidth = int.Parse(SpriteFrameWidth.Text);
         var frameHeight = int.Parse(SpriteFrameHeight.Text);
 
-        using var image = SixLabors.ImageSharp.Image.Load<Rgba32>(_currentSpriteSheetPath);
+        using var image = new MagickImage(_currentSpriteSheetPath);
         
-        if (frameWidth == 0) frameWidth = image.Width / columns;
-        if (frameHeight == 0) frameHeight = image.Height / rows;
+        if (frameWidth == 0) frameWidth = (int)(image.Width / columns);
+        if (frameHeight == 0) frameHeight = (int)(image.Height / rows);
 
         var tempPath = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "giflet_preview.gif");
         var frameDelay = 100;
 
-        var gif = new SixLabors.ImageSharp.Image<Rgba32>(frameWidth, frameHeight);
-        var gifMeta = gif.Metadata.GetGifMetadata();
-        gifMeta.RepeatCount = 0;
-
+        var gif = new MagickImageCollection();
+        
         for (int y = 0; y < rows; y++)
         {
             for (int x = 0; x < columns; x++)
             {
-                var frame = image.Clone(ctx => ctx.Crop(new ImageSharpRect(x * frameWidth, y * frameHeight, frameWidth, frameHeight)));
-                var frameMeta = frame.Frames.RootFrame.Metadata.GetGifMetadata();
-                frameMeta.FrameDelay = frameDelay / 10;
-                gif.Frames.AddFrame(frame.Frames.RootFrame);
+                var frame = new MagickImage(image);
+                frame.Crop(new MagickGeometry(x * frameWidth, y * frameHeight, (uint)frameWidth, (uint)frameHeight));
+                frame.AnimationDelay = (ushort)(frameDelay / 10);
+                gif.Add(frame);
             }
         }
 
-        gif.Frames.RemoveFrame(0);
-        gif.SaveAsGif(tempPath);
+        await gif.WriteAsync(tempPath, MagickFormat.Gif);
 
         await Dispatcher.InvokeAsync(() =>
         {
@@ -1822,21 +1586,14 @@ public partial class MainWindow : Window
         _gifFrames.Clear();
         try
         {
-            using var gif = SixLabors.ImageSharp.Image.Load<Rgba32>(path);
-            var width = gif.Width;
-            var height = gif.Height;
+            using var gif = new MagickImageCollection(path);
+            var width = gif[0].Width;
+            var height = gif[0].Height;
             
-            using var fullFrame = new SixLabors.ImageSharp.Image<Rgba32>(width, height);
-            
-            for (int i = 0; i < gif.Frames.Count; i++)
+            foreach (var frame in gif)
             {
-                using var frameImg = new SixLabors.ImageSharp.Image<Rgba32>(width, height);
-                frameImg.Frames.AddFrame(gif.Frames[i]);
-                frameImg.Frames.RemoveFrame(0);
-                fullFrame.Mutate(ctx => ctx.DrawImage(frameImg, 1f));
-                
                 using var ms = new MemoryStream();
-                fullFrame.SaveAsPng(ms);
+                frame.Write(ms, MagickFormat.Png);
                 ms.Position = 0;
                 
                 var image = new BitmapImage();
@@ -1879,7 +1636,7 @@ public partial class MainWindow : Window
             var spriteWidth = columns * frameWidth;
             var spriteHeight = rows * frameHeight;
 
-            using var sprite = new SixLabors.ImageSharp.Image<Rgba32>(spriteWidth, spriteHeight);
+            using var sprite = new MagickImage(MagickColors.Transparent, (uint)spriteWidth, (uint)spriteHeight);
 
             for (int i = 0; i < _gifFrames.Count; i++)
             {
@@ -1896,12 +1653,12 @@ public partial class MainWindow : Window
                     encoder.Save(fileStream);
                 }
 
-                using var frameImage = SixLabors.ImageSharp.Image.Load<Rgba32>(framePath);
-                sprite.Mutate(ctx => ctx.DrawImage(frameImage, new ImageSharpPoint(x, y), 1f));
+                var frameImage = new MagickImage(framePath);
+                sprite.Composite(frameImage, x, y, CompositeOperator.Over);
                 File.Delete(framePath);
             }
 
-            sprite.Save(savePath);
+            sprite.Write(savePath, MagickFormat.Png);
             MessageBox.Show("Sprite sheet created successfully!", "Success", MessageBoxButton.OK, MessageBoxImage.Information);
     }
 
@@ -1941,7 +1698,7 @@ public partial class MainWindow : Window
         var savePath = dialog.FileName;
         var columns = int.Parse(PngToSpriteColumns.Text);
 
-            var firstImage = await SixLabors.ImageSharp.Image.LoadAsync<Rgba32>(_pngToSpriteImages[0]);
+            var firstImage = new MagickImage(_pngToSpriteImages[0]);
             var frameWidth = firstImage.Width;
             var frameHeight = firstImage.Height;
             firstImage.Dispose();
@@ -1951,7 +1708,7 @@ public partial class MainWindow : Window
             var spriteWidth = columns * frameWidth;
             var spriteHeight = rows * frameHeight;
 
-            using var sprite = new SixLabors.ImageSharp.Image<Rgba32>(spriteWidth, spriteHeight);
+            using var sprite = new MagickImage(MagickColors.Transparent, (uint)spriteWidth, (uint)spriteHeight);
 
             for (int i = 0; i < _pngToSpriteImages.Count; i++)
             {
@@ -1960,11 +1717,11 @@ public partial class MainWindow : Window
                 var x = col * frameWidth;
                 var y = row * frameHeight;
 
-                using var frameImage = await SixLabors.ImageSharp.Image.LoadAsync<Rgba32>(_pngToSpriteImages[i]);
-                sprite.Mutate(ctx => ctx.DrawImage(frameImage, new ImageSharpPoint(x, y), 1f));
+                using var frameImage = new MagickImage(_pngToSpriteImages[i]);
+                sprite.Composite(frameImage, (int)x, (int)y, CompositeOperator.Over);
             }
 
-            sprite.Save(savePath);
+            sprite.Write(savePath, MagickFormat.Png);
             MessageBox.Show("Sprite sheet created successfully!", "Success", MessageBoxButton.OK, MessageBoxImage.Information);
     }
 }
