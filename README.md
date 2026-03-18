@@ -45,4 +45,4 @@ Or run the compiled executable from `bin/Debug/net10.0-windows/GIFlet.exe`
 
 ## Preview
 
-![GIFlet2.5-ImageMagick](https://github.com/NickIsOnYT/GIFlet/blob/main/Logo/Screenshot%20GIFlet%2025.png)
+![GIFlet2.5-ImageMagick](https://github.com/NickIsOnYT/GIFlet/blob/ImageMagick-test/Logo%2FScreenshot%20GIFlet%2025.png)
