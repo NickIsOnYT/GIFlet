@@ -41,8 +41,8 @@ Or run the compiled executable from `bin/Debug/net10.0-windows/GIFlet.exe`
 
 ## The name
 
-- GIFlet is a word play of the word Applet (a small program designed to do one task in a widegt engine). I decided to use this name because of the "EZGif alternative" branding (EZGif being an online-only application, and this being an offline alternative.)
+- GIFlet is a word play of the word Applet (a small program designed to do one task in a widget engine). I decided to use this name because i thought it'd be funny
 
 ## Preview
 
-![GIFlet2.1](https://github.com/NickIsOnYT/GIFlet/blob/main/Logo/Screenshot%20GIFlet.png)
+![GIFlet2.4](https://github.com/NickIsOnYT/GIFlet/blob/main/Logo/Screenshot%20GIFlet%2024.png)
