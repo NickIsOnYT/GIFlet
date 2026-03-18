@@ -84,6 +84,42 @@ public partial class MainWindow : Window
         MainTabControl.SelectedIndex = ModeSelector.SelectedIndex;
     }
 
+    private void MainTabControl_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
+    {
+        try
+        {
+            if (SplitOriginalImage != null) SplitOriginalImage.Source = null;
+            if (SplitFramesList != null) SplitFramesList.Items.Clear();
+            
+            if (CreateImageList != null)
+            {
+                CreateImageList.ItemsSource = null;
+            }
+            
+            if (ReversePreviewImage != null) ReversePreviewImage.Source = null;
+            if (SpeedPreviewImage != null) SpeedPreviewImage.Source = null;
+            if (OptimizePreviewImage != null) OptimizePreviewImage.Source = null;
+            if (CropPreviewImage != null) CropPreviewImage.Source = null;
+            if (ResizePreviewImage != null) ResizePreviewImage.Source = null;
+            if (RotatePreviewImage != null) RotatePreviewImage.Source = null;
+            if (EffectsPreviewImage != null) EffectsPreviewImage.Source = null;
+            if (ColorPreviewImage != null) ColorPreviewImage.Source = null;
+            if (TransparencyPreviewImage != null) TransparencyPreviewImage.Source = null;
+            if (BorderPreviewImage != null) BorderPreviewImage.Source = null;
+            if (VideoPreview != null) 
+            {
+                VideoPreview.Stop();
+                VideoPreview.Source = null;
+            }
+            if (SpriteToGifPreview != null) SpriteToGifPreview.Source = null;
+            if (SpriteFrameList != null) SpriteFrameList.Items.Clear();
+            if (GifToSpritePreview != null) GifToSpritePreview.Source = null;
+        }
+        catch { }
+        GC.Collect();
+        GC.WaitForPendingFinalizers();
+    }
+
     private void ShowSaveDialog(Action<string> saveAction)
     {
         var dialog = new SaveFileDialog
@@ -439,27 +475,40 @@ public partial class MainWindow : Window
             var fps = 1000.0 / delay;
             var fpsStr = fps.ToString("F2", System.Globalization.CultureInfo.InvariantCulture);
 
-            var startInfo = new System.Diagnostics.ProcessStartInfo
+            var process = new System.Diagnostics.Process
             {
-                FileName = ffmpegPath,
-                Arguments = $"-y -framerate {fpsStr} -i \"{tempDir}\\frame_%05d.png\" -c:v libx264 -pix_fmt yuv420p \"{dialog.FileName}\"",
-                UseShellExecute = false,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                CreateNoWindow = true,
-                WorkingDirectory = tempDir
+                StartInfo = new System.Diagnostics.ProcessStartInfo
+                {
+                    FileName = ffmpegPath,
+                    Arguments = $"-y -framerate {fpsStr} -i \"{tempDir}\\frame_%05d.png\" -c:v libx264 -pix_fmt yuv420p \"{dialog.FileName}\"",
+                    UseShellExecute = false,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    CreateNoWindow = true,
+                    WorkingDirectory = tempDir
+                }
             };
+            process.Start();
+            
+            var finished = process.WaitForExit(120000);
+            
+            if (!finished)
+            {
+                process.Kill();
+                MessageBox.Show("FFmpeg timed out or was cancelled", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                try { System.IO.Directory.Delete(tempDir, true); } catch { }
+                return;
+            }
 
-            var process = System.Diagnostics.Process.Start(startInfo);
-            await process.WaitForExitAsync();
-            System.IO.Directory.Delete(tempDir, true);
+            try { System.IO.Directory.Delete(tempDir, true); } catch { }
+            
             if (process.ExitCode == 0)
             {
                 MessageBox.Show("MP4 created successfully!", "Success", MessageBoxButton.OK, MessageBoxImage.Information);
             }
             else
             {
-                var error = await process.StandardError.ReadToEndAsync();
+                var error = process.StandardError.ReadToEnd();
                 MessageBox.Show($"FFmpeg error: {error}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
@@ -472,7 +521,49 @@ public partial class MainWindow : Window
         {
             _currentGifPath = path;
             SplitOriginalImage.SourcePath = path;
+            LoadSplitFrames(path);
         });
+    }
+
+    private class FramePreviewItem
+    {
+        public BitmapImage Image { get; set; } = null!;
+        public int FrameIndex { get; set; }
+    }
+
+    private void LoadSplitFrames(string path)
+    {
+        SplitFramesList.Items.Clear();
+        try
+        {
+            using var gif = new MagickImageCollection(path);
+            var width = gif[0].Width;
+            var height = gif[0].Height;
+            int frameIndex = 0;
+            
+            foreach (var frame in gif)
+            {
+                using var fullFrame = new MagickImage(MagickColors.Transparent, (uint)width, (uint)height);
+                fullFrame.Composite(frame, CompositeOperator.Over);
+                
+                using var ms = new MemoryStream();
+                fullFrame.Write(ms, MagickFormat.Png);
+                ms.Position = 0;
+                
+                var image = new BitmapImage();
+                image.BeginInit();
+                image.StreamSource = ms;
+                image.CacheOption = BitmapCacheOption.OnLoad;
+                image.EndInit();
+                image.Freeze();
+                
+                SplitFramesList.Items.Add(new FramePreviewItem { Image = image, FrameIndex = frameIndex });
+                frameIndex++;
+            }
+            
+            SplitFrameCount.Text = $"{frameIndex} frames";
+        }
+        catch { }
     }
 
     private void SplitClear_Click(object sender, RoutedEventArgs e)
@@ -480,31 +571,45 @@ public partial class MainWindow : Window
         _currentGifPath = null;
         SplitOriginalImage.Source = null;
         SplitFramesList.ItemsSource = null;
+        SplitFramesList.Items.Clear();
     }
 
     private async void SplitExtractFrames_Click(object sender, RoutedEventArgs e)
     {
         if (string.IsNullOrEmpty(_currentGifPath)) return;
 
-        ShowSaveDialog(async (path) =>
+        var dialog = new SaveFileDialog
+        {
+            Filter = "PNG Image|*.png",
+            DefaultExt = "png",
+            FileName = "frame_0000.png",
+            Title = "Select location to save frames (a folder will be created)"
+        };
+        if (dialog.ShowDialog() != true) return;
+
+        var frameDir = System.IO.Path.GetDirectoryName(dialog.FileName);
+        if (string.IsNullOrEmpty(frameDir)) return;
+        
+        try
         {
             using var gif = new MagickImageCollection(_currentGifPath);
-            var frameDir = SysPath.Combine(SysPath.GetDirectoryName(path)!, "frames");
-            Directory.CreateDirectory(frameDir);
+            var width = gif[0].Width;
+            var height = gif[0].Height;
 
             for (int i = 0; i < gif.Count; i++)
             {
-                var framePath = SysPath.Combine(frameDir, $"frame_{i:D4}.png");
-                gif[i].Write(framePath, MagickFormat.Png);
+                var framePath = System.IO.Path.Combine(frameDir, $"frame_{i:D4}.png");
+                using var fullFrame = new MagickImage(MagickColors.Transparent, (uint)width, (uint)height);
+                fullFrame.Composite(gif[i], CompositeOperator.Over);
+                fullFrame.Write(framePath, MagickFormat.Png);
             }
 
-            var framesList = new ObservableCollection<BitmapImage>();
-            foreach (var f in Directory.GetFiles(frameDir).OrderBy(f => f, new NaturalStringComparer()))
-            {
-                framesList.Add(LoadBitmapImage(f));
-            }
-            SplitFramesList.ItemsSource = framesList;
-        });
+            MessageBox.Show($"Exported {gif.Count} frames to {frameDir}", "Success", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"Error: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
     }
 
     // Combine GIFs
@@ -690,7 +795,9 @@ public partial class MainWindow : Window
             using var gif = new MagickImageCollection(_currentGifPath);
 
             var output = new MagickImageCollection();
-            var maxColors = OptimizeLevel.SelectedIndex switch
+            var optimizeLevel = OptimizeLevel.SelectedIndex;
+            
+            uint maxColors = optimizeLevel switch
             {
                 0 => 256,
                 1 => 192,
@@ -699,27 +806,28 @@ public partial class MainWindow : Window
                 _ => 256
             };
 
-            var quantizeSettings = new QuantizeSettings
-            {
-                Colors = (uint)maxColors,
-                DitherMethod = DitherMethod.FloydSteinberg
-            };
-
             foreach (var frame in gif)
             {
                 var frameImg = new MagickImage(frame);
+                frameImg.Strip();
+                
                 if (maxColors < 256)
                 {
-                    frameImg.Quantize(quantizeSettings);
+                    frameImg.Quantize(new QuantizeSettings
+                    {
+                        Colors = maxColors,
+                        DitherMethod = DitherMethod.FloydSteinberg
+                    });
                 }
+                
                 frameImg.AnimationDelay = frame.AnimationDelay;
                 output.Add(frameImg);
             }
 
             output[0].AnimationIterations = gif[0].AnimationIterations;
+            output.Coalesce();
+            output.Optimize();
             await output.WriteAsync(path, MagickFormat.Gif);
-
-            MessageBox.Show("GIF created successfully!", "Success", MessageBoxButton.OK, MessageBoxImage.Information);
         });
     }
 
@@ -763,8 +871,9 @@ public partial class MainWindow : Window
             {
                 var frameImg = new MagickImage(frame);
                 frameImg.Crop(new MagickGeometry(x, y, (uint)width, (uint)height));
-                frameImg.AnimationDelay = frame.AnimationDelay;
-                output.Add(frameImg);
+                using var cropped = frameImg.Clone();
+                cropped.AnimationDelay = frame.AnimationDelay;
+                output.Add(cropped);
             }
 
             output[0].AnimationIterations = gif[0].AnimationIterations;
@@ -794,6 +903,7 @@ public partial class MainWindow : Window
 
         var width = int.Parse(ResizeWidth.Text);
         var height = int.Parse(ResizeHeight.Text);
+        var stretch = ResizeStretch?.IsChecked == true;
 
         ShowSaveDialog(async (path) =>
         {
@@ -803,15 +913,23 @@ public partial class MainWindow : Window
             foreach (var frame in gif)
             {
                 var frameImg = new MagickImage(frame);
-                frameImg.Resize((uint)width, (uint)height);
+                if (stretch)
+                {
+                    frameImg.Resize((uint)width, (uint)height);
+                }
+                else
+                {
+                    var ratio = Math.Min((double)width / frameImg.Width, (double)height / frameImg.Height);
+                    var newWidth = (uint)(frameImg.Width * ratio);
+                    var newHeight = (uint)(frameImg.Height * ratio);
+                    frameImg.Resize(newWidth, newHeight);
+                }
                 frameImg.AnimationDelay = frame.AnimationDelay;
                 output.Add(frameImg);
             }
 
             output[0].AnimationIterations = gif[0].AnimationIterations;
             await output.WriteAsync(path, MagickFormat.Gif);
-
-            MessageBox.Show("GIF created successfully!", "Success", MessageBoxButton.OK, MessageBoxImage.Information);
         });
     }
 
@@ -998,8 +1116,6 @@ public partial class MainWindow : Window
 
             output[0].AnimationIterations = gif[0].AnimationIterations;
             await output.WriteAsync(path, MagickFormat.Gif);
-
-            MessageBox.Show("GIF created successfully!", "Success", MessageBoxButton.OK, MessageBoxImage.Information);
         });
     }
 
@@ -1030,7 +1146,7 @@ public partial class MainWindow : Window
     {
         if (string.IsNullOrEmpty(_currentGifPath)) return;
 
-        var transparency = (float)(TransparencyAmount.Value / 100f);
+        var transparency = TransparencyAmount.Value;
 
         ShowSaveDialog(async (path) =>
         {
@@ -1040,15 +1156,13 @@ public partial class MainWindow : Window
             foreach (var frame in gif)
             {
                 var frameImg = new MagickImage(frame);
-                frameImg.Evaluate(Channels.Alpha, EvaluateOperator.Multiply, 1f - transparency);
+                frameImg.Evaluate(Channels.Alpha, EvaluateOperator.Multiply, 1.0 - (transparency / 100.0));
                 frameImg.AnimationDelay = frame.AnimationDelay;
                 output.Add(frameImg);
             }
 
             output[0].AnimationIterations = gif[0].AnimationIterations;
             await output.WriteAsync(path, MagickFormat.Gif);
-
-            MessageBox.Show("GIF created successfully!", "Success", MessageBoxButton.OK, MessageBoxImage.Information);
         });
     }
 
@@ -1102,8 +1216,6 @@ public partial class MainWindow : Window
 
             output[0].AnimationIterations = gif[0].AnimationIterations;
             await output.WriteAsync(path, MagickFormat.Gif);
-
-            MessageBox.Show("GIF created successfully!", "Success", MessageBoxButton.OK, MessageBoxImage.Information);
         });
     }
 
@@ -1235,20 +1347,29 @@ public partial class MainWindow : Window
                 }
             };
             process.Start();
-            await process.WaitForExitAsync();
+            
+            var finished = process.WaitForExit(120000);
+            
+            if (!finished)
+            {
+                process.Kill();
+                MessageBox.Show("FFmpeg timed out or was cancelled", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                try { Directory.Delete(tempDir, true); } catch { }
+                return;
+            }
 
-            if (System.IO.File.Exists(System.IO.Path.Combine(tempDir, "output.gif")))
+            if (process.ExitCode == 0 && System.IO.File.Exists(System.IO.Path.Combine(tempDir, "output.gif")))
             {
                 System.IO.File.Copy(System.IO.Path.Combine(tempDir, "output.gif"), dialog.FileName, true);
                 MessageBox.Show("GIF created successfully!", "Success", MessageBoxButton.OK, MessageBoxImage.Information);
             }
             else
             {
-                var error = await process.StandardError.ReadToEndAsync();
+                var error = process.StandardError.ReadToEnd();
                 MessageBox.Show($"Error creating GIF: {error}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
             }
 
-            Directory.Delete(tempDir, true);
+            try { Directory.Delete(tempDir, true); } catch { }
         }
         catch (Exception ex)
         {
@@ -1371,6 +1492,8 @@ public partial class MainWindow : Window
             var bitmap = new BitmapImage(new Uri(path));
             SpriteToGifPreview.Source = bitmap;
             
+            AutoUpdateSpriteDimensions();
+            
             SpriteFrameList.Items.Clear();
             var columns = int.Parse(SpriteColumns.Text);
             var rows = int.Parse(SpriteRows.Text);
@@ -1392,11 +1515,28 @@ public partial class MainWindow : Window
     private void SpriteColumns_TextChanged(object sender, TextChangedEventArgs e)
     {
         UpdateSpriteFrameList();
+        AutoUpdateSpriteDimensions();
     }
 
     private void SpriteRows_TextChanged(object sender, TextChangedEventArgs e)
     {
         UpdateSpriteFrameList();
+        AutoUpdateSpriteDimensions();
+    }
+
+    private void AutoUpdateSpriteDimensions()
+    {
+        if (_currentSpriteSheetPath == null) return;
+
+        if (!int.TryParse(SpriteColumns.Text, out int columns)) columns = 4;
+        if (!int.TryParse(SpriteRows.Text, out int rows)) rows = 4;
+
+        using var img = new MagickImage(_currentSpriteSheetPath);
+        var frameWidth = img.Width / columns;
+        var frameHeight = img.Height / rows;
+
+        SpriteFrameWidth.Text = frameWidth.ToString();
+        SpriteFrameHeight.Text = frameHeight.ToString();
     }
 
     private void UpdateSpriteFrameList()
@@ -1542,16 +1682,18 @@ public partial class MainWindow : Window
         if (frameHeight == 0) frameHeight = (int)(image.Height / rows);
 
         var tempPath = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "giflet_preview.gif");
-        var frameDelay = 100;
+        var frameDelay = int.Parse(SpriteFrameDelay.Text);
+        if (frameDelay == 0) frameDelay = 100;
 
         var gif = new MagickImageCollection();
         
-        for (int y = 0; y < rows; y++)
+        for (int row = 0; row < rows; row++)
         {
-            for (int x = 0; x < columns; x++)
+            for (int col = 0; col < columns; col++)
             {
                 var frame = new MagickImage(image);
-                frame.Crop(new MagickGeometry(x * frameWidth, y * frameHeight, (uint)frameWidth, (uint)frameHeight));
+                var geometry = new MagickGeometry(col * frameWidth, row * frameHeight, (uint)frameWidth, (uint)frameHeight);
+                frame.Crop(geometry);
                 frame.AnimationDelay = (ushort)(frameDelay / 10);
                 gif.Add(frame);
             }
@@ -1592,8 +1734,11 @@ public partial class MainWindow : Window
             
             foreach (var frame in gif)
             {
+                using var fullFrame = new MagickImage(MagickColors.Transparent, (uint)width, (uint)height);
+                fullFrame.Composite(frame, CompositeOperator.Over);
+                
                 using var ms = new MemoryStream();
-                frame.Write(ms, MagickFormat.Png);
+                fullFrame.Write(ms, MagickFormat.Png);
                 ms.Position = 0;
                 
                 var image = new BitmapImage();

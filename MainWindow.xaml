@@ -45,7 +45,7 @@
         <Button Grid.Column="3" Content="Settings" Click="OpenSettings_Click" FontSize="12" Width="80" Height="35" VerticalAlignment="Center" Margin="10,0,0,0"/>
         </Grid>
         
-        <TabControl x:Name="MainTabControl" Grid.Row="1">
+        <TabControl x:Name="MainTabControl" Grid.Row="1" SelectionChanged="MainTabControl_SelectionChanged">
             <TabControl.Template>
                 <ControlTemplate TargetType="TabControl">
                     <ContentPresenter ContentSource="SelectedContent"/>
@@ -136,13 +136,24 @@
                         </GroupBox>
                         
                         <GroupBox Grid.Column="1" Header="Extracted Frames" Margin="5,0,0,0">
-                            <ListBox x:Name="SplitFramesList" SelectionMode="Extended">
-                                <ListBox.ItemTemplate>
-                                    <DataTemplate>
-                                        <Image Source="{Binding}" Width="80" Height="80" Stretch="Uniform"/>
-                                    </DataTemplate>
-                                </ListBox.ItemTemplate>
-                            </ListBox>
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="*"/>
+                                    <RowDefinition Height="Auto"/>
+                                </Grid.RowDefinitions>
+                                <ListBox x:Name="SplitFramesList" SelectionMode="Extended" Grid.Row="0">
+                                    <ListBox.ItemTemplate>
+                                        <DataTemplate>
+                                            <StackPanel Orientation="Horizontal">
+                                                <CheckBox IsChecked="True" VerticalAlignment="Center" Margin="0,0,5,0"/>
+                                                <Image Source="{Binding Image}" Width="60" Height="60" Stretch="Uniform"/>
+                                                <TextBlock Text="{Binding FrameIndex, StringFormat='Frame {0}'}" VerticalAlignment="Center" Margin="5,0,0,0"/>
+                                            </StackPanel>
+                                        </DataTemplate>
+                                    </ListBox.ItemTemplate>
+                                </ListBox>
+                                <TextBlock x:Name="SplitFrameCount" Grid.Row="1" Text="0 frames" Margin="0,5,0,0"/>
+                            </Grid>
                         </GroupBox>
                     </Grid>
                     
@@ -372,7 +383,10 @@
                         </Grid>
                     </Grid>
                     
-                    <Button Grid.Row="2" Content="Resize GIF" Click="ResizeGif_Click" Height="45" FontSize="14" Margin="0,10,0,0"/>
+                    <StackPanel Grid.Row="2">
+                        <CheckBox x:Name="ResizeStretch" Content="Stretch to fit" IsChecked="False" Margin="0,10,0,0"/>
+                        <Button Content="Resize GIF" Click="ResizeGif_Click" Height="45" FontSize="14" Margin="0,10,0,0"/>
+                    </StackPanel>
                 </Grid>
             </TabItem>
 
@@ -554,7 +568,6 @@
                                 <Slider x:Name="TransparencyAmount" Minimum="0" Maximum="100" Value="0" Width="200" ValueChanged="TransparencySlider_ValueChanged"/>
                                 <TextBlock x:Name="TransparencyAmountVal" Text="0%" VerticalAlignment="Center" Margin="10,0,0,0"/>
                             </StackPanel>
-                            <CheckBox x:Name="TransparencyColorKey" Content="Make color transparent (select from preview)" Margin="0,10,0,0"/>
                         </StackPanel>
                     </Grid>
                     
