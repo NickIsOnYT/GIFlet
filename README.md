@@ -1,6 +1,6 @@
 # GIFlet - the offline alternative to EZGIF
 
-A Windows desktop application for editing GIF images, built with WPF and ImageSharp.
+A Windows desktop application for editing GIF images, built with WPF and Magick.NET.
 
 I'm not a programmer so this was fully made using [OpenCode](https://opencode.ai/download) (MiniMax M2.5 Free)
 
@@ -17,7 +17,7 @@ I'm not a programmer so this was fully made using [OpenCode](https://opencode.ai
 - **Rotate/Flip** - Rotate 90°/180°/270° or flip horizontally/vertically
 - **Effects** - Apply Blur, Sharpen, Gaussian Blur, Invert, Grayscale, Sepia
 - **Colors** - Adjust Brightness, Contrast, and Saturation
-- **Transparency** - Adjust opacity (broken but funny)
+- **Transparency** - Adjust opacity or make a selected color transparent
 - **Add Border** - Add borders around GIF
 - **GIF Debug** - View detailed information about GIF files (frames, delays, dimensions, etc.)
 - **Video to GIF** (and vice-versa)

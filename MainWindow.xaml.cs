@@ -1,22 +1,13 @@
-using System.IO;
+﻿using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using Microsoft.Win32;
-using SixLabors.ImageSharp;
-using SixLabors.ImageSharp.Processing;
-using SixLabors.ImageSharp.Formats.Gif;
-using SixLabors.ImageSharp.PixelFormats;
-using SixLabors.ImageSharp.Processing.Processors.Quantization;
-using SixLabors.ImageSharp.Drawing;
-using SixLabors.ImageSharp.Formats.Png;
-using SixLabors.ImageSharp.Formats;
+using ImageMagick;
 using System.Collections.ObjectModel;
 using SysPath = System.IO.Path;
-using ImageSharpPoint = SixLabors.ImageSharp.Point;
-using ImageSharpRect = SixLabors.ImageSharp.Rectangle;
 
 namespace GIFlet;
 
@@ -54,6 +45,7 @@ public class NaturalStringComparer : IComparer<string>
 public partial class MainWindow : Window
 {
     private string? _currentGifPath;
+    private System.Windows.Media.Color? _transparencyKeyColor;
     private readonly ObservableCollection<string> _createImages = new();
     private readonly ObservableCollection<string> _combineGifs = new();
 
@@ -93,7 +85,7 @@ public partial class MainWindow : Window
         MainTabControl.SelectedIndex = ModeSelector.SelectedIndex;
     }
 
-    private void ShowSaveDialog(Action<string> saveAction)
+    private async Task ShowSaveDialog(Func<string, Task> saveAction)
     {
         var dialog = new SaveFileDialog
         {
@@ -104,7 +96,7 @@ public partial class MainWindow : Window
         {
             try
             {
-                saveAction(dialog.FileName);
+                await saveAction(dialog.FileName);
                 MessageBox.Show("Operation completed successfully!", "Success", MessageBoxButton.OK, MessageBoxImage.Information);
             }
             catch (Exception ex)
@@ -125,6 +117,25 @@ public partial class MainWindow : Window
             try
             {
                 openAction(dialog.FileName);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Error: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+    }
+
+    private async Task ShowOpenDialogAsync(string filter, Func<string, Task> openAction)
+    {
+        var dialog = new OpenFileDialog
+        {
+            Filter = filter
+        };
+        if (dialog.ShowDialog() == true)
+        {
+            try
+            {
+                await openAction(dialog.FileName);
             }
             catch (Exception ex)
             {
@@ -166,7 +177,23 @@ public partial class MainWindow : Window
 
     private byte[] LoadGifBytes(string path) => File.ReadAllBytes(path);
 
-    private static GifFrameMetadata GetGifFrameMetadata(ImageFrame frame) => frame.Metadata.GetGifMetadata();
+    private static RasterFrameMetadata GetGifFrameMetadata(RasterFrame frame) => frame.Metadata.GetGifMetadata();
+
+    private static bool FramesEqual(RasterFrame left, RasterFrame right)
+    {
+        if (left.Width != right.Width || left.Height != right.Height) return false;
+
+        for (int y = 0; y < left.Height; y++)
+        {
+            for (int x = 0; x < left.Width; x++)
+            {
+                if (!left[x, y].Equals(right[x, y]))
+                    return false;
+            }
+        }
+
+        return true;
+    }
 
     // Create GIF
     private void CreateAddImages_Click(object sender, RoutedEventArgs e)
@@ -311,18 +338,18 @@ public partial class MainWindow : Window
             return;
         }
 
-        ShowSaveDialog(async (path) =>
+        await ShowSaveDialog(async (path) =>
         {
             var delay = int.Parse(CreateFrameDelay.Text);
             var loop = int.TryParse(CreateLoopCount.Text, out var loopVal) ? loopVal : 0;
             var noStack = CreateNoStackFrames.IsChecked == true;
             var firstFrameBg = CreateFirstFrameBg.IsChecked == true;
 
-            var frames = new List<Image<Rgba32>>();
+            var frames = new List<RasterImage>();
 
             foreach (var imgPath in _createImages)
             {
-                var img = await SixLabors.ImageSharp.Image.LoadAsync<Rgba32>(imgPath);
+                var img = await RasterImage.LoadAsync<Rgba32>(imgPath);
                 frames.Add(img);
             }
 
@@ -331,7 +358,7 @@ public partial class MainWindow : Window
                 var width = frames[0].Width;
                 var height = frames[0].Height;
 
-                using var output = new Image<Rgba32>(width, height);
+                using var output = new RasterImage(width, height);
                 var gifMeta = output.Metadata.GetGifMetadata();
                 gifMeta.RepeatCount = (ushort)loop;
 
@@ -339,10 +366,10 @@ public partial class MainWindow : Window
                 for (int i = startIdx; i < frames.Count; i++)
                 {
                     using var resized = frames[i].Clone(ctx => ctx.Resize(width, height));
-                    Image<Rgba32> frameToAdd;
+                    RasterImage frameToAdd;
                     if (firstFrameBg && noStack)
                     {
-                        using var composite = new Image<Rgba32>(width, height);
+                        using var composite = new RasterImage(width, height);
                         composite.Frames.AddFrame(frames[0].Frames.RootFrame);
                         composite.Frames.RemoveFrame(0);
                         composite.Mutate(ctx => ctx.DrawImage(resized, 1f));
@@ -350,7 +377,7 @@ public partial class MainWindow : Window
                     }
                     else if (noStack || firstFrameBg)
                     {
-                        using var fullFrame = new Image<Rgba32>(width, height);
+                        using var fullFrame = new RasterImage(width, height);
                         fullFrame.Frames.AddFrame(resized.Frames.RootFrame);
                         fullFrame.Frames.RemoveFrame(0);
                         frameToAdd = fullFrame.Clone();
@@ -403,11 +430,11 @@ public partial class MainWindow : Window
         var tempDir = System.IO.Path.Combine(System.IO.Path.GetTempPath(), $"giflet_mp4_{Guid.NewGuid()}");
         System.IO.Directory.CreateDirectory(tempDir);
 
-        var frames = new List<Image<Rgba32>>();
+        var frames = new List<RasterImage>();
 
         foreach (var imgPath in _createImages)
         {
-            var img = await SixLabors.ImageSharp.Image.LoadAsync<Rgba32>(imgPath);
+            var img = await RasterImage.LoadAsync<Rgba32>(imgPath);
             frames.Add(img);
         }
 
@@ -421,10 +448,10 @@ public partial class MainWindow : Window
             for (int i = startIdx; i < frames.Count; i++)
             {
                 using var resized = frames[i].Clone(ctx => ctx.Resize(width, height));
-                Image<Rgba32> frameToSave;
+                RasterImage frameToSave;
                 if (firstFrameBg && noStack)
                 {
-                    using var composite = new Image<Rgba32>(width, height);
+                    using var composite = new RasterImage(width, height);
                     composite.Frames.AddFrame(frames[0].Frames.RootFrame);
                     composite.Frames.RemoveFrame(0);
                     composite.Mutate(ctx => ctx.DrawImage(resized, 1f));
@@ -432,7 +459,7 @@ public partial class MainWindow : Window
                 }
                 else if (noStack || firstFrameBg)
                 {
-                    using var fullFrame = new Image<Rgba32>(width, height);
+                    using var fullFrame = new RasterImage(width, height);
                     fullFrame.Frames.AddFrame(resized.Frames.RootFrame);
                     fullFrame.Frames.RemoveFrame(0);
                     frameToSave = fullFrame.Clone();
@@ -466,21 +493,23 @@ public partial class MainWindow : Window
                 FileName = ffmpegPath,
                 Arguments = $"-y -framerate {fpsStr} -i \"{tempDir}\\frame_%05d.png\" -c:v libx264 -pix_fmt yuv420p \"{dialog.FileName}\"",
                 UseShellExecute = false,
-                RedirectStandardOutput = true,
                 RedirectStandardError = true,
                 CreateNoWindow = true,
                 WorkingDirectory = tempDir
             };
 
-            var process = System.Diagnostics.Process.Start(startInfo);
+            using var process = System.Diagnostics.Process.Start(startInfo)
+                ?? throw new InvalidOperationException("Failed to start FFmpeg.");
+            var errorTask = process.StandardError.ReadToEndAsync();
             await process.WaitForExitAsync();
             if (process.ExitCode != 0)
             {
-                var error = await process.StandardError.ReadToEndAsync();
+                var error = await errorTask;
                 System.IO.Directory.Delete(tempDir, true);
                 await Dispatcher.InvokeAsync(() => MessageBox.Show($"FFmpeg error: {error}", "Error", MessageBoxButton.OK, MessageBoxImage.Error));
                 return;
             }
+            await errorTask;
 
             System.IO.Directory.Delete(tempDir, true);
             await Dispatcher.InvokeAsync(() => MessageBox.Show("MP4 created successfully!", "Success", MessageBoxButton.OK, MessageBoxImage.Information));
@@ -512,23 +541,27 @@ public partial class MainWindow : Window
     {
         if (string.IsNullOrEmpty(_currentGifPath)) return;
 
-        ShowSaveDialog(async (path) =>
+        await ShowSaveDialog(async (path) =>
         {
-            using var gif = await SixLabors.ImageSharp.Image.LoadAsync<Rgba32>(_currentGifPath);
-            var frameDir = SysPath.Combine(SysPath.GetDirectoryName(path)!, "frames");
+            using var gif = await RasterImage.LoadAsync<Rgba32>(_currentGifPath);
+            var frameDir = SysPath.Combine(
+                SysPath.GetDirectoryName(path)!,
+                $"{SysPath.GetFileNameWithoutExtension(path)}_frames");
             Directory.CreateDirectory(frameDir);
 
+            var framePaths = new List<string>(gif.Frames.Count);
             for (int i = 0; i < gif.Frames.Count; i++)
             {
                 var framePath = SysPath.Combine(frameDir, $"frame_{i:D4}.png");
-                using var frameImg = new Image<Rgba32>(gif.Width, gif.Height);
+                using var frameImg = new RasterImage(gif.Width, gif.Height);
                 frameImg.Frames.AddFrame(gif.Frames[i]);
                 frameImg.Frames.RemoveFrame(0);
                 await frameImg.SaveAsPngAsync(framePath);
+                framePaths.Add(framePath);
             }
 
             var framesList = new ObservableCollection<BitmapImage>();
-            foreach (var f in Directory.GetFiles(frameDir).OrderBy(f => f, new NaturalStringComparer()))
+            foreach (var f in framePaths)
             {
                 framesList.Add(LoadBitmapImage(f));
             }
@@ -592,23 +625,23 @@ public partial class MainWindow : Window
             return;
         }
 
-        ShowSaveDialog(async (path) =>
+        await ShowSaveDialog(async (path) =>
         {
-            var allFrames = new List<Image<Rgba32>>();
+            var allFrames = new List<RasterImage>();
 
             foreach (var gifPath in _combineGifs)
             {
-                using var gif = await SixLabors.ImageSharp.Image.LoadAsync<Rgba32>(gifPath);
-                var delay = GetGifFrameMetadata(gif.Frames.RootFrame).FrameDelay;
+                using var gif = await RasterImage.LoadAsync<Rgba32>(gifPath);
                 var gifWidth = gif.Width;
                 var gifHeight = gif.Height;
 
                 for (int i = 0; i < gif.Frames.Count; i++)
                 {
-                    var frameImg = new Image<Rgba32>(gifWidth, gifHeight);
+                    var frameImg = new RasterImage(gifWidth, gifHeight);
                     frameImg.Frames.AddFrame(gif.Frames[i]);
                     frameImg.Frames.RemoveFrame(0);
-                    GetGifFrameMetadata(frameImg.Frames.RootFrame).FrameDelay = delay;
+                    GetGifFrameMetadata(frameImg.Frames.RootFrame).FrameDelay =
+                        GetGifFrameMetadata(gif.Frames[i]).FrameDelay;
                     allFrames.Add(frameImg);
                 }
             }
@@ -618,7 +651,7 @@ public partial class MainWindow : Window
                 var width = allFrames[0].Width;
                 var height = allFrames[0].Height;
 
-                using var output = new Image<Rgba32>(width, height);
+                using var output = new RasterImage(width, height);
                 var gifMeta = output.Metadata.GetGifMetadata();
                 gifMeta.RepeatCount = 0;
 
@@ -659,21 +692,21 @@ public partial class MainWindow : Window
     {
         if (string.IsNullOrEmpty(_currentGifPath)) return;
 
-        ShowSaveDialog(async (path) =>
+        await ShowSaveDialog(async (path) =>
         {
-            using var gif = await SixLabors.ImageSharp.Image.LoadAsync<Rgba32>(_currentGifPath);
+            using var gif = await RasterImage.LoadAsync<Rgba32>(_currentGifPath);
             var frameCount = gif.Frames.Count;
-            var frames = new Image<Rgba32>[frameCount];
+            var frames = new RasterImage[frameCount];
 
             for (int i = 0; i < frameCount; i++)
             {
-                var frameImg = new Image<Rgba32>(gif.Width, gif.Height);
+                var frameImg = new RasterImage(gif.Width, gif.Height);
                 frameImg.Frames.AddFrame(gif.Frames[i]);
                 frameImg.Frames.RemoveFrame(0);
                 frames[i] = frameImg;
             }
 
-            using var output = new Image<Rgba32>(gif.Width, gif.Height);
+            using var output = new RasterImage(gif.Width, gif.Height);
             var gifMeta = output.Metadata.GetGifMetadata();
             gifMeta.RepeatCount = gif.Metadata.GetGifMetadata().RepeatCount;
 
@@ -713,22 +746,22 @@ public partial class MainWindow : Window
         var multipliers = new[] { 0.25f, 0.5f, 1f, 2f, 3f, 4f };
         var multiplier = multipliers[SpeedMultiplier.SelectedIndex];
 
-        ShowSaveDialog(async (path) =>
+        await ShowSaveDialog(async (path) =>
         {
-            using var gif = await SixLabors.ImageSharp.Image.LoadAsync<Rgba32>(_currentGifPath);
+            using var gif = await RasterImage.LoadAsync<Rgba32>(_currentGifPath);
 
-            var frames = new List<Image<Rgba32>>();
+            var frames = new List<RasterImage>();
             for (int i = 0; i < gif.Frames.Count; i++)
             {
                 var delay = GetGifFrameMetadata(gif.Frames[i]).FrameDelay;
-                var frameImg = new Image<Rgba32>(gif.Width, gif.Height);
+                var frameImg = new RasterImage(gif.Width, gif.Height);
                 frameImg.Frames.AddFrame(gif.Frames[i]);
                 frameImg.Frames.RemoveFrame(0);
                 GetGifFrameMetadata(frameImg.Frames.RootFrame).FrameDelay = (int)(delay / multiplier);
                 frames.Add(frameImg);
             }
 
-            using var output = new Image<Rgba32>(gif.Width, gif.Height);
+            using var output = new RasterImage(gif.Width, gif.Height);
             var gifMeta = output.Metadata.GetGifMetadata();
             gifMeta.RepeatCount = gif.Metadata.GetGifMetadata().RepeatCount;
 
@@ -764,11 +797,11 @@ public partial class MainWindow : Window
     {
         if (string.IsNullOrEmpty(_currentGifPath)) return;
 
-        ShowSaveDialog(async (path) =>
+        await ShowSaveDialog(async (path) =>
         {
-            using var gif = await SixLabors.ImageSharp.Image.LoadAsync<Rgba32>(_currentGifPath);
+            using var gif = await RasterImage.LoadAsync<Rgba32>(_currentGifPath);
 
-            var processedFrames = new List<Image<Rgba32>>();
+            var processedFrames = new List<RasterImage>();
             var maxColors = OptimizeLevel.SelectedIndex switch
             {
                 0 => 224,
@@ -781,14 +814,14 @@ public partial class MainWindow : Window
 
             for (int i = 0; i < gif.Frames.Count; i++)
             {
-                var frameImg = new Image<Rgba32>(gif.Width, gif.Height);
+                var frameImg = new RasterImage(gif.Width, gif.Height);
                 frameImg.Frames.AddFrame(gif.Frames[i]);
                 frameImg.Frames.RemoveFrame(0);
                 
-                Image<Rgba32> processed;
+                RasterImage processed;
                 if (doQuantize)
                 {
-                    var quantizer = new OctreeQuantizer(new QuantizerOptions { MaxColors = maxColors });
+                    var quantizer = new OctreeQuantizer(maxColors);
                     processed = frameImg.Clone(ctx => ctx.Quantize(quantizer));
                 }
                 else
@@ -798,14 +831,34 @@ public partial class MainWindow : Window
                 
                 var delay = GetGifFrameMetadata(gif.Frames[i]).FrameDelay;
                 GetGifFrameMetadata(processed.Frames.RootFrame).FrameDelay = delay;
-                
-                processedFrames.Add(processed);
+
+                if (OptimizeRemoveDups.IsChecked == true &&
+                    processedFrames.Count > 0 &&
+                    FramesEqual(processedFrames[^1].Frames.RootFrame, processed.Frames.RootFrame))
+                {
+                    var previousMetadata = GetGifFrameMetadata(processedFrames[^1].Frames.RootFrame);
+                    var combinedDelay = previousMetadata.FrameDelay + delay;
+                    if (combinedDelay <= ushort.MaxValue)
+                    {
+                        previousMetadata.FrameDelay = combinedDelay;
+                        processed.Dispose();
+                    }
+                    else
+                    {
+                        processedFrames.Add(processed);
+                    }
+                }
+                else
+                {
+                    processedFrames.Add(processed);
+                }
+
                 if (doQuantize) frameImg.Dispose();
             }
 
             if (processedFrames.Count > 0)
             {
-                using var output = new Image<Rgba32>(gif.Width, gif.Height);
+                using var output = new RasterImage(gif.Width, gif.Height);
                 var gifMeta = output.Metadata.GetGifMetadata();
                 gifMeta.RepeatCount = gif.Metadata.GetGifMetadata().RepeatCount;
 
@@ -825,12 +878,12 @@ public partial class MainWindow : Window
     // Crop
     private async void CropOpenGif_Click(object sender, RoutedEventArgs e)
     {
-        ShowOpenDialog("GIF Image|*.gif", async (path) =>
+        await ShowOpenDialogAsync("GIF Image|*.gif", async (path) =>
         {
             _currentGifPath = path;
             CropPreviewImage.SourcePath = path;
             
-            using var gif = await SixLabors.ImageSharp.Image.LoadAsync<Rgba32>(path);
+            using var gif = await RasterImage.LoadAsync<Rgba32>(path);
             CropWidth.Text = gif.Width.ToString();
             CropHeight.Text = gif.Height.ToString();
         });
@@ -851,24 +904,24 @@ public partial class MainWindow : Window
         var width = int.Parse(CropWidth.Text);
         var height = int.Parse(CropHeight.Text);
 
-        ShowSaveDialog(async (path) =>
+        await ShowSaveDialog(async (path) =>
         {
-            using var gif = await SixLabors.ImageSharp.Image.LoadAsync<Rgba32>(_currentGifPath);
+            using var gif = await RasterImage.LoadAsync<Rgba32>(_currentGifPath);
 
-            var frames = new List<Image<Rgba32>>();
+            var frames = new List<RasterImage>();
             for (int i = 0; i < gif.Frames.Count; i++)
             {
-                var frameImg = new Image<Rgba32>(gif.Width, gif.Height);
+                var frameImg = new RasterImage(gif.Width, gif.Height);
                 frameImg.Frames.AddFrame(gif.Frames[i]);
                 frameImg.Frames.RemoveFrame(0);
                 
-                var cropped = frameImg.Clone(ctx => ctx.Crop(new ImageSharpRect(0, 0, width, height)));
+                var cropped = frameImg.Clone(ctx => ctx.Crop(new RasterRectangle(0, 0, width, height)));
                 GetGifFrameMetadata(cropped.Frames.RootFrame).FrameDelay = GetGifFrameMetadata(gif.Frames[i]).FrameDelay;
                 frames.Add(cropped);
                 frameImg.Dispose();
             }
 
-            using var output = new Image<Rgba32>(width, height);
+            using var output = new RasterImage(width, height);
             var gifMeta = output.Metadata.GetGifMetadata();
             gifMeta.RepeatCount = gif.Metadata.GetGifMetadata().RepeatCount;
 
@@ -907,14 +960,14 @@ public partial class MainWindow : Window
         var width = int.Parse(ResizeWidth.Text);
         var height = int.Parse(ResizeHeight.Text);
 
-        ShowSaveDialog(async (path) =>
+        await ShowSaveDialog(async (path) =>
         {
-            using var gif = await SixLabors.ImageSharp.Image.LoadAsync<Rgba32>(_currentGifPath);
+            using var gif = await RasterImage.LoadAsync<Rgba32>(_currentGifPath);
 
-            var frames = new List<Image<Rgba32>>();
+            var frames = new List<RasterImage>();
             for (int i = 0; i < gif.Frames.Count; i++)
             {
-                var frameImg = new Image<Rgba32>(gif.Width, gif.Height);
+                var frameImg = new RasterImage(gif.Width, gif.Height);
                 frameImg.Frames.AddFrame(gif.Frames[i]);
                 frameImg.Frames.RemoveFrame(0);
                 
@@ -924,7 +977,7 @@ public partial class MainWindow : Window
                 frameImg.Dispose();
             }
 
-            using var output = new Image<Rgba32>(width, height);
+            using var output = new RasterImage(width, height);
             var gifMeta = output.Metadata.GetGifMetadata();
             gifMeta.RepeatCount = gif.Metadata.GetGifMetadata().RepeatCount;
 
@@ -964,14 +1017,14 @@ public partial class MainWindow : Window
         var angle = angles[RotateAngle.SelectedIndex];
         var flipMode = FlipDirection.SelectedIndex switch
         {
-            1 => FlipMode.Horizontal,
-            2 => FlipMode.Vertical,
-            _ => (FlipMode?)null
+            1 => RasterFlipMode.Horizontal,
+            2 => RasterFlipMode.Vertical,
+            _ => (RasterFlipMode?)null
         };
 
-        ShowSaveDialog(async (path) =>
+        await ShowSaveDialog(async (path) =>
         {
-            using var gif = await SixLabors.ImageSharp.Image.LoadAsync<Rgba32>(_currentGifPath);
+            using var gif = await RasterImage.LoadAsync<Rgba32>(_currentGifPath);
 
             var newWidth = gif.Width;
             var newHeight = gif.Height;
@@ -981,10 +1034,10 @@ public partial class MainWindow : Window
                 newHeight = gif.Width;
             }
 
-            var frames = new List<Image<Rgba32>>();
+            var frames = new List<RasterImage>();
             for (int i = 0; i < gif.Frames.Count; i++)
             {
-                var frameImg = new Image<Rgba32>(gif.Width, gif.Height);
+                var frameImg = new RasterImage(gif.Width, gif.Height);
                 frameImg.Frames.AddFrame(gif.Frames[i]);
                 frameImg.Frames.RemoveFrame(0);
                 
@@ -997,7 +1050,7 @@ public partial class MainWindow : Window
                 frames.Add(frameImg);
             }
 
-            using var output = new Image<Rgba32>(newWidth, newHeight);
+            using var output = new RasterImage(newWidth, newHeight);
             var gifMeta = output.Metadata.GetGifMetadata();
             gifMeta.RepeatCount = gif.Metadata.GetGifMetadata().RepeatCount;
 
@@ -1036,14 +1089,14 @@ public partial class MainWindow : Window
         var effectIndex = EffectType.SelectedIndex;
         var intensity = (float)(EffectIntensity.Value / 100f);
 
-        ShowSaveDialog(async (path) =>
+        await ShowSaveDialog(async (path) =>
         {
-            using var gif = await SixLabors.ImageSharp.Image.LoadAsync<Rgba32>(_currentGifPath);
+            using var gif = await RasterImage.LoadAsync<Rgba32>(_currentGifPath);
 
-            var frames = new List<Image<Rgba32>>();
+            var frames = new List<RasterImage>();
             for (int i = 0; i < gif.Frames.Count; i++)
             {
-                var frameImg = new Image<Rgba32>(gif.Width, gif.Height);
+                var frameImg = new RasterImage(gif.Width, gif.Height);
                 frameImg.Frames.AddFrame(gif.Frames[i]);
                 frameImg.Frames.RemoveFrame(0);
                 
@@ -1072,7 +1125,7 @@ public partial class MainWindow : Window
                 frames.Add(frameImg);
             }
 
-            using var output = new Image<Rgba32>(gif.Width, gif.Height);
+            using var output = new RasterImage(gif.Width, gif.Height);
             var gifMeta = output.Metadata.GetGifMetadata();
             gifMeta.RepeatCount = gif.Metadata.GetGifMetadata().RepeatCount;
 
@@ -1128,14 +1181,14 @@ public partial class MainWindow : Window
         var contrast = (float)(ColorContrast.Value / 100f);
         var saturation = (float)(ColorSaturation.Value / 100f);
 
-        ShowSaveDialog(async (path) =>
+        await ShowSaveDialog(async (path) =>
         {
-            using var gif = await SixLabors.ImageSharp.Image.LoadAsync<Rgba32>(_currentGifPath);
+            using var gif = await RasterImage.LoadAsync<Rgba32>(_currentGifPath);
 
-            var frames = new List<Image<Rgba32>>();
+            var frames = new List<RasterImage>();
             for (int i = 0; i < gif.Frames.Count; i++)
             {
-                var frameImg = new Image<Rgba32>(gif.Width, gif.Height);
+                var frameImg = new RasterImage(gif.Width, gif.Height);
                 frameImg.Frames.AddFrame(gif.Frames[i]);
                 frameImg.Frames.RemoveFrame(0);
                 
@@ -1152,7 +1205,7 @@ public partial class MainWindow : Window
                 frames.Add(frameImg);
             }
 
-            using var output = new Image<Rgba32>(gif.Width, gif.Height);
+            using var output = new RasterImage(gif.Width, gif.Height);
             var gifMeta = output.Metadata.GetGifMetadata();
             gifMeta.RepeatCount = gif.Metadata.GetGifMetadata().RepeatCount;
 
@@ -1183,6 +1236,44 @@ public partial class MainWindow : Window
         _currentGifPath = null;
         TransparencyPreviewImage.Source = null;
         TransparencyAmount.Value = 0;
+        TransparencyColorKey.IsChecked = false;
+        _transparencyKeyColor = null;
+    }
+
+    private void TransparencyPreviewImage_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (TransparencyColorKey.IsChecked != true ||
+            TransparencyPreviewImage.Source is not BitmapSource source ||
+            source.PixelWidth == 0 ||
+            source.PixelHeight == 0)
+        {
+            return;
+        }
+
+        var position = e.GetPosition(TransparencyPreviewImage);
+        var scale = Math.Min(
+            TransparencyPreviewImage.ActualWidth / source.PixelWidth,
+            TransparencyPreviewImage.ActualHeight / source.PixelHeight);
+        var renderedWidth = source.PixelWidth * scale;
+        var renderedHeight = source.PixelHeight * scale;
+        var x = (int)((position.X - (TransparencyPreviewImage.ActualWidth - renderedWidth) / 2) / scale);
+        var y = (int)((position.Y - (TransparencyPreviewImage.ActualHeight - renderedHeight) / 2) / scale);
+        if (x < 0 || y < 0 || x >= source.PixelWidth || y >= source.PixelHeight)
+            return;
+
+        var converted = new FormatConvertedBitmap(source, PixelFormats.Bgra32, null, 0);
+        var pixels = new byte[4];
+        converted.CopyPixels(new Int32Rect(x, y, 1, 1), pixels, 4, 0);
+        _transparencyKeyColor = System.Windows.Media.Color.FromRgb(
+            pixels[2],
+            pixels[1],
+            pixels[0]);
+        MessageBox.Show(
+            $"Selected color #{_transparencyKeyColor.Value.R:X2}{_transparencyKeyColor.Value.G:X2}{_transparencyKeyColor.Value.B:X2}.",
+            "Transparency color",
+            MessageBoxButton.OK,
+            MessageBoxImage.Information);
+        e.Handled = true;
     }
 
     private void TransparencySlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
@@ -1196,24 +1287,46 @@ public partial class MainWindow : Window
         if (string.IsNullOrEmpty(_currentGifPath)) return;
 
         var transparency = (float)(TransparencyAmount.Value / 100f);
-
-        ShowSaveDialog(async (path) =>
+        if (TransparencyColorKey.IsChecked == true && _transparencyKeyColor == null)
         {
-            using var gif = await SixLabors.ImageSharp.Image.LoadAsync<Rgba32>(_currentGifPath);
+            MessageBox.Show("Select a color from the preview first.", "Transparency", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
 
-            var frames = new List<Image<Rgba32>>();
+        await ShowSaveDialog(async (path) =>
+        {
+            using var gif = await RasterImage.LoadAsync<Rgba32>(_currentGifPath);
+
+            var frames = new List<RasterImage>();
             for (int i = 0; i < gif.Frames.Count; i++)
             {
-                var frameImg = new Image<Rgba32>(gif.Width, gif.Height);
+                var frameImg = new RasterImage(gif.Width, gif.Height);
                 frameImg.Frames.AddFrame(gif.Frames[i]);
                 frameImg.Frames.RemoveFrame(0);
                 
-                frameImg.Mutate(ctx => ctx.Opacity(1f - transparency));
+                if (TransparencyColorKey.IsChecked == true && _transparencyKeyColor is { } keyColor)
+                {
+                    for (int y = 0; y < frameImg.Height; y++)
+                    {
+                        for (int x = 0; x < frameImg.Width; x++)
+                        {
+                            var pixel = frameImg[x, y];
+                            if (pixel.R == keyColor.R && pixel.G == keyColor.G && pixel.B == keyColor.B)
+                            {
+                                pixel.A = 0;
+                                frameImg[x, y] = pixel;
+                            }
+                        }
+                    }
+                }
+
+                if (transparency > 0)
+                    frameImg.Mutate(ctx => ctx.Opacity(1f - transparency));
                 GetGifFrameMetadata(frameImg.Frames.RootFrame).FrameDelay = GetGifFrameMetadata(gif.Frames[i]).FrameDelay;
                 frames.Add(frameImg);
             }
 
-            using var output = new Image<Rgba32>(gif.Width, gif.Height);
+            using var output = new RasterImage(gif.Width, gif.Height);
             var gifMeta = output.Metadata.GetGifMetadata();
             gifMeta.RepeatCount = gif.Metadata.GetGifMetadata().RepeatCount;
 
@@ -1244,6 +1357,7 @@ public partial class MainWindow : Window
         _currentGifPath = null;
         BorderPreviewImage.Source = null;
         BorderWidth.Text = "10";
+        BorderRadius.Text = "0";
         BorderColor.SelectedIndex = 0;
     }
 
@@ -1251,40 +1365,68 @@ public partial class MainWindow : Window
     {
         if (string.IsNullOrEmpty(_currentGifPath)) return;
 
-        var borderWidth = int.Parse(BorderWidth.Text);
+        if (!int.TryParse(BorderWidth.Text, out var borderWidth) || borderWidth < 0 ||
+            !int.TryParse(BorderRadius.Text, out var borderRadius) || borderRadius < 0)
+        {
+            MessageBox.Show("Border width and corner radius must be non-negative whole numbers.", "Invalid border settings", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
         var colorName = new[] { "Black", "White", "Red", "Blue", "Green" }[BorderColor.SelectedIndex];
 
         var borderColor = colorName switch
         {
-            "White" => SixLabors.ImageSharp.Color.White,
-            "Red" => SixLabors.ImageSharp.Color.Red,
-            "Blue" => SixLabors.ImageSharp.Color.Blue,
-            "Green" => SixLabors.ImageSharp.Color.Green,
-            _ => SixLabors.ImageSharp.Color.Black
+            "White" => RasterColor.White,
+            "Red" => RasterColor.Red,
+            "Blue" => RasterColor.Blue,
+            "Green" => RasterColor.Green,
+            _ => RasterColor.Black
         };
 
-        ShowSaveDialog(async (path) =>
+        await ShowSaveDialog(async (path) =>
         {
-            using var gif = await SixLabors.ImageSharp.Image.LoadAsync<Rgba32>(_currentGifPath);
+            using var gif = await RasterImage.LoadAsync<Rgba32>(_currentGifPath);
 
             var newWidth = gif.Width + (borderWidth * 2);
             var newHeight = gif.Height + (borderWidth * 2);
 
-            var frames = new List<Image<Rgba32>>();
+            var frames = new List<RasterImage>();
             for (int i = 0; i < gif.Frames.Count; i++)
             {
-                var frameImg = new Image<Rgba32>(gif.Width, gif.Height);
+                var frameImg = new RasterImage(gif.Width, gif.Height);
                 frameImg.Frames.AddFrame(gif.Frames[i]);
                 frameImg.Frames.RemoveFrame(0);
                 
-                var bordered = new Image<Rgba32>(newWidth, newHeight, borderColor);
-                bordered.Mutate(ctx => ctx.DrawImage(frameImg, new ImageSharpPoint(borderWidth, borderWidth), 1f));
+                var bordered = new RasterImage(newWidth, newHeight, borderColor);
+                bordered.Mutate(ctx => ctx.DrawImage(frameImg, new RasterPoint(borderWidth, borderWidth), 1f));
+                var radius = Math.Min(borderRadius, Math.Min(newWidth, newHeight) / 2);
+                if (radius > 0)
+                {
+                    var radiusSquared = radius * radius;
+                    for (int y = 0; y < newHeight; y++)
+                    {
+                        for (int x = 0; x < newWidth; x++)
+                        {
+                            var cornerX = x < radius ? radius : x >= newWidth - radius ? newWidth - radius - 1 : -1;
+                            var cornerY = y < radius ? radius : y >= newHeight - radius ? newHeight - radius - 1 : -1;
+                            if (cornerX < 0 || cornerY < 0) continue;
+
+                            var dx = x - cornerX;
+                            var dy = y - cornerY;
+                            if (dx * dx + dy * dy < radiusSquared) continue;
+
+                            var pixel = bordered[x, y];
+                            pixel.A = 0;
+                            bordered[x, y] = pixel;
+                        }
+                    }
+                }
                 GetGifFrameMetadata(bordered.Frames.RootFrame).FrameDelay = GetGifFrameMetadata(gif.Frames[i]).FrameDelay;
                 frames.Add(bordered);
                 frameImg.Dispose();
             }
 
-            using var output = new Image<Rgba32>(newWidth, newHeight);
+            using var output = new RasterImage(newWidth, newHeight);
             var gifMeta = output.Metadata.GetGifMetadata();
             gifMeta.RepeatCount = gif.Metadata.GetGifMetadata().RepeatCount;
 
@@ -1303,18 +1445,24 @@ public partial class MainWindow : Window
     // GIF Debug
     private async void DebugOpenGif_Click(object sender, RoutedEventArgs e)
     {
-        ShowOpenDialog("GIF Image|*.gif", async (path) =>
+        await ShowOpenDialogAsync("GIF Image|*.gif", async (path) =>
         {
-            using var gif = await SixLabors.ImageSharp.Image.LoadAsync<Rgba32>(path);
+            using var gif = await RasterImage.LoadAsync<Rgba32>(path);
             
             var fileInfo = new FileInfo(path);
             var fileSize = fileInfo.Length;
             var gifMeta = gif.Metadata.GetGifMetadata();
             
             var totalDelay = 0;
+            var colors = new HashSet<Rgba32>();
             foreach (var frame in gif.Frames)
             {
                 totalDelay += frame.Metadata.GetGifMetadata().FrameDelay;
+                for (int y = 0; y < frame.Height; y++)
+                {
+                    for (int x = 0; x < frame.Width; x++)
+                        colors.Add(frame[x, y]);
+                }
             }
             var lengthSeconds = totalDelay / 100.0;
             
@@ -1325,7 +1473,7 @@ public partial class MainWindow : Window
             output.AppendLine($"GIF length: {lengthSeconds:F1} second(s)");
             output.AppendLine($"GIF width/height: {gif.Width}×{gif.Height} pixels");
             output.AppendLine($"number of frames: {gif.Frames.Count}");
-            output.AppendLine($"number of colors: 256");
+            output.AppendLine($"number of colors: {colors.Count}");
             output.AppendLine($"loop count: {gifMeta.RepeatCount} {(gifMeta.RepeatCount == 0 ? "(endless)" : "")}");
             output.AppendLine();
             
@@ -1425,7 +1573,6 @@ public partial class MainWindow : Window
                     FileName = ffmpegPath,
                     Arguments = args,
                     UseShellExecute = false,
-                    RedirectStandardOutput = true,
                     RedirectStandardError = true,
                     CreateNoWindow = true
                 }
@@ -1505,8 +1652,13 @@ public partial class MainWindow : Window
 
         var formats = new[] { "mp4", "webm", "avi" };
         var format = formats[GifToVideoFormat.SelectedIndex];
-        var qualities = new[] { "28", "35", "50" };
-        var quality = qualities[GifToVideoQuality.SelectedIndex];
+        var qualityIndex = GifToVideoQuality.SelectedIndex;
+        var quality = format switch
+        {
+            "mp4" => new[] { "18", "23", "28" }[qualityIndex],
+            "webm" => new[] { "30", "40", "50" }[qualityIndex],
+            _ => new[] { "3", "5", "8" }[qualityIndex]
+        };
 
         var dialog = new SaveFileDialog
         {
@@ -1524,31 +1676,55 @@ public partial class MainWindow : Window
                 return;
             }
 
-            var args = $"-y -i \"{_currentGifPath}\" -c:v libx264 -crf {quality} -pix_fmt yuv420p \"{dialog.FileName}\"";
-            
-            var process = new System.Diagnostics.Process
+            var startInfo = new System.Diagnostics.ProcessStartInfo
             {
-                StartInfo = new System.Diagnostics.ProcessStartInfo
-                {
-                    FileName = ffmpegPath,
-                    Arguments = args,
-                    UseShellExecute = false,
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true,
-                    CreateNoWindow = true
-                }
+                FileName = ffmpegPath,
+                UseShellExecute = false,
+                RedirectStandardError = true,
+                CreateNoWindow = true
             };
-            process.Start();
-            await process.WaitForExitAsync();
+            startInfo.ArgumentList.Add("-y");
+            startInfo.ArgumentList.Add("-i");
+            startInfo.ArgumentList.Add(_currentGifPath);
+            startInfo.ArgumentList.Add("-c:v");
+            startInfo.ArgumentList.Add(format == "mp4" ? "libx264" : format == "webm" ? "libvpx-vp9" : "mpeg4");
+            if (format == "avi")
+            {
+                startInfo.ArgumentList.Add("-q:v");
+            }
+            else
+            {
+                startInfo.ArgumentList.Add("-crf");
+            }
+            startInfo.ArgumentList.Add(quality);
+            if (format == "webm")
+            {
+                startInfo.ArgumentList.Add("-b:v");
+                startInfo.ArgumentList.Add("0");
+            }
+            if (format != "avi")
+            {
+                startInfo.ArgumentList.Add("-pix_fmt");
+                startInfo.ArgumentList.Add("yuv420p");
+            }
+            startInfo.ArgumentList.Add(dialog.FileName);
 
-            if (System.IO.File.Exists(dialog.FileName))
+            using var process = new System.Diagnostics.Process { StartInfo = startInfo };
+            process.Start();
+            var errorTask = process.StandardError.ReadToEndAsync();
+            await process.WaitForExitAsync();
+            var error = await errorTask;
+
+            if (process.ExitCode == 0 && System.IO.File.Exists(dialog.FileName))
             {
                 MessageBox.Show("Video exported successfully!", "Success", MessageBoxButton.OK, MessageBoxImage.Information);
             }
             else
             {
-                var error = await process.StandardError.ReadToEndAsync();
-                MessageBox.Show($"Error exporting video: {error}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                var details = string.IsNullOrWhiteSpace(error)
+                    ? $"FFmpeg exited with code {process.ExitCode}."
+                    : error;
+                MessageBox.Show($"Error exporting video: {details}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
         catch (Exception ex)
@@ -1650,14 +1826,14 @@ public partial class MainWindow : Window
             return;
         }
 
-        ShowSaveDialog(async savePath =>
+        await ShowSaveDialog(async savePath =>
         {
             var columns = int.Parse(SpriteColumns.Text);
             var rows = int.Parse(SpriteRows.Text);
             var frameWidth = int.Parse(SpriteFrameWidth.Text);
             var frameHeight = int.Parse(SpriteFrameHeight.Text);
 
-            using var image = SixLabors.ImageSharp.Image.Load<Rgba32>(_currentSpriteSheetPath);
+            using var image = RasterImage.Load<Rgba32>(_currentSpriteSheetPath);
             
             if (frameWidth == 0) frameWidth = image.Width / columns;
             if (frameHeight == 0) frameHeight = image.Height / rows;
@@ -1677,14 +1853,14 @@ public partial class MainWindow : Window
                 var x = (frameNum % columns) * frameWidth;
                 var y = (frameNum / columns) * frameHeight;
                 
-                using var cropped = image.Clone(ctx => ctx.Crop(new ImageSharpRect(x, y, frameWidth, frameHeight)));
+                using var cropped = image.Clone(ctx => ctx.Crop(new RasterRectangle(x, y, frameWidth, frameHeight)));
                 
-                using var transparentFrame = new SixLabors.ImageSharp.Image<Rgba32>(frameWidth, frameHeight);
+                using var transparentFrame = new RasterImage(frameWidth, frameHeight);
                 for (int py = 0; py < frameHeight; py++)
                 {
                     for (int px = 0; px < frameWidth; px++)
                     {
-                        transparentFrame[px, py] = SixLabors.ImageSharp.Color.Transparent;
+                        transparentFrame[px, py] = new Rgba32(0, 0, 0, 0);
                     }
                 }
                 transparentFrame.Mutate(ctx => ctx.DrawImage(cropped, 1f));
@@ -1714,9 +1890,16 @@ public partial class MainWindow : Window
                 CreateNoWindow = true
             };
 
-            var process = System.Diagnostics.Process.Start(startInfo);
+            using var process = System.Diagnostics.Process.Start(startInfo)
+                ?? throw new InvalidOperationException("Failed to start FFmpeg.");
+            var errorTask = process.StandardError.ReadToEndAsync();
             await process.WaitForExitAsync();
+            var error = await errorTask;
             System.IO.Directory.Delete(tempDir, true);
+            if (process.ExitCode != 0)
+            {
+                await Dispatcher.InvokeAsync(() => MessageBox.Show($"FFmpeg error: {error}", "Error", MessageBoxButton.OK, MessageBoxImage.Error));
+            }
         });
     }
 
@@ -1729,7 +1912,7 @@ public partial class MainWindow : Window
         var frameWidth = int.Parse(SpriteFrameWidth.Text);
         var frameHeight = int.Parse(SpriteFrameHeight.Text);
 
-        using var image = SixLabors.ImageSharp.Image.Load<Rgba32>(_currentSpriteSheetPath);
+        using var image = RasterImage.Load<Rgba32>(_currentSpriteSheetPath);
         
         if (frameWidth == 0) frameWidth = image.Width / columns;
         if (frameHeight == 0) frameHeight = image.Height / rows;
@@ -1750,7 +1933,7 @@ public partial class MainWindow : Window
         {
             for (int x = 0; x < columns; x++)
             {
-                using var frame = image.Clone(ctx => ctx.Crop(new ImageSharpRect(x * frameWidth, y * frameHeight, frameWidth, frameHeight)));
+                using var frame = image.Clone(ctx => ctx.Crop(new RasterRectangle(x * frameWidth, y * frameHeight, frameWidth, frameHeight)));
                 var outputPath = System.IO.Path.Combine(folderPath, $"frame_{count:D4}.png");
                 frame.SaveAsPng(outputPath);
                 count++;
@@ -1769,7 +1952,7 @@ public partial class MainWindow : Window
         var frameWidth = int.Parse(SpriteFrameWidth.Text);
         var frameHeight = int.Parse(SpriteFrameHeight.Text);
 
-        using var image = SixLabors.ImageSharp.Image.Load<Rgba32>(_currentSpriteSheetPath);
+        using var image = RasterImage.Load<Rgba32>(_currentSpriteSheetPath);
         
         if (frameWidth == 0) frameWidth = image.Width / columns;
         if (frameHeight == 0) frameHeight = image.Height / rows;
@@ -1777,7 +1960,7 @@ public partial class MainWindow : Window
         var tempPath = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "giflet_preview.gif");
         var frameDelay = 100;
 
-        var gif = new SixLabors.ImageSharp.Image<Rgba32>(frameWidth, frameHeight);
+        var gif = new RasterImage(frameWidth, frameHeight);
         var gifMeta = gif.Metadata.GetGifMetadata();
         gifMeta.RepeatCount = 0;
 
@@ -1785,7 +1968,7 @@ public partial class MainWindow : Window
         {
             for (int x = 0; x < columns; x++)
             {
-                var frame = image.Clone(ctx => ctx.Crop(new ImageSharpRect(x * frameWidth, y * frameHeight, frameWidth, frameHeight)));
+                var frame = image.Clone(ctx => ctx.Crop(new RasterRectangle(x * frameWidth, y * frameHeight, frameWidth, frameHeight)));
                 var frameMeta = frame.Frames.RootFrame.Metadata.GetGifMetadata();
                 frameMeta.FrameDelay = frameDelay / 10;
                 gif.Frames.AddFrame(frame.Frames.RootFrame);
@@ -1822,15 +2005,15 @@ public partial class MainWindow : Window
         _gifFrames.Clear();
         try
         {
-            using var gif = SixLabors.ImageSharp.Image.Load<Rgba32>(path);
+            using var gif = RasterImage.Load<Rgba32>(path);
             var width = gif.Width;
             var height = gif.Height;
             
-            using var fullFrame = new SixLabors.ImageSharp.Image<Rgba32>(width, height);
+            using var fullFrame = new RasterImage(width, height);
             
             for (int i = 0; i < gif.Frames.Count; i++)
             {
-                using var frameImg = new SixLabors.ImageSharp.Image<Rgba32>(width, height);
+                using var frameImg = new RasterImage(width, height);
                 frameImg.Frames.AddFrame(gif.Frames[i]);
                 frameImg.Frames.RemoveFrame(0);
                 fullFrame.Mutate(ctx => ctx.DrawImage(frameImg, 1f));
@@ -1879,7 +2062,7 @@ public partial class MainWindow : Window
             var spriteWidth = columns * frameWidth;
             var spriteHeight = rows * frameHeight;
 
-            using var sprite = new SixLabors.ImageSharp.Image<Rgba32>(spriteWidth, spriteHeight);
+            using var sprite = new RasterImage(spriteWidth, spriteHeight);
 
             for (int i = 0; i < _gifFrames.Count; i++)
             {
@@ -1896,8 +2079,8 @@ public partial class MainWindow : Window
                     encoder.Save(fileStream);
                 }
 
-                using var frameImage = SixLabors.ImageSharp.Image.Load<Rgba32>(framePath);
-                sprite.Mutate(ctx => ctx.DrawImage(frameImage, new ImageSharpPoint(x, y), 1f));
+                using var frameImage = RasterImage.Load<Rgba32>(framePath);
+                sprite.Mutate(ctx => ctx.DrawImage(frameImage, new RasterPoint(x, y), 1f));
                 File.Delete(framePath);
             }
 
@@ -1941,7 +2124,7 @@ public partial class MainWindow : Window
         var savePath = dialog.FileName;
         var columns = int.Parse(PngToSpriteColumns.Text);
 
-            var firstImage = await SixLabors.ImageSharp.Image.LoadAsync<Rgba32>(_pngToSpriteImages[0]);
+            var firstImage = await RasterImage.LoadAsync<Rgba32>(_pngToSpriteImages[0]);
             var frameWidth = firstImage.Width;
             var frameHeight = firstImage.Height;
             firstImage.Dispose();
@@ -1951,7 +2134,7 @@ public partial class MainWindow : Window
             var spriteWidth = columns * frameWidth;
             var spriteHeight = rows * frameHeight;
 
-            using var sprite = new SixLabors.ImageSharp.Image<Rgba32>(spriteWidth, spriteHeight);
+            using var sprite = new RasterImage(spriteWidth, spriteHeight);
 
             for (int i = 0; i < _pngToSpriteImages.Count; i++)
             {
@@ -1960,8 +2143,8 @@ public partial class MainWindow : Window
                 var x = col * frameWidth;
                 var y = row * frameHeight;
 
-                using var frameImage = await SixLabors.ImageSharp.Image.LoadAsync<Rgba32>(_pngToSpriteImages[i]);
-                sprite.Mutate(ctx => ctx.DrawImage(frameImage, new ImageSharpPoint(x, y), 1f));
+                using var frameImage = await RasterImage.LoadAsync<Rgba32>(_pngToSpriteImages[i]);
+                sprite.Mutate(ctx => ctx.DrawImage(frameImage, new RasterPoint(x, y), 1f));
             }
 
             sprite.Save(savePath);

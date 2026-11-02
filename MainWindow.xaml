@@ -537,7 +537,7 @@
                             <RowDefinition Height="Auto"/>
                         </Grid.RowDefinitions>
                         <GroupBox Grid.Row="0" Header="Preview">
-                            <local:AnimatedImage x:Name="TransparencyPreviewImage" Stretch="Uniform"/>
+                            <local:AnimatedImage x:Name="TransparencyPreviewImage" Stretch="Uniform" PreviewMouseLeftButtonDown="TransparencyPreviewImage_PreviewMouseLeftButtonDown"/>
                         </GroupBox>
                         
                         <StackPanel Grid.Row="1" Margin="0,10,0,0">

@@ -15,13 +15,13 @@ namespace GIFlet;
 
         public static readonly DependencyProperty SourcePathProperty =
             DependencyProperty.Register(nameof(SourcePath), typeof(string), typeof(AnimatedImage),
-                new PropertyMetadata(null, OnSourcePathChanged));
+                new PropertyMetadata(null, OnImagePropertyChanged));
 
         public static readonly DependencyProperty IsAnimatedProperty =
             DependencyProperty.Register(nameof(IsAnimated), typeof(bool), typeof(AnimatedImage),
-                new PropertyMetadata(false, OnSourcePathChanged));
+                new PropertyMetadata(true, OnImagePropertyChanged));
 
-    public string SourcePath
+    public string? SourcePath
     {
         get => (string)GetValue(SourcePathProperty);
         set => SetValue(SourcePathProperty, value);
@@ -33,14 +33,14 @@ namespace GIFlet;
         set => SetValue(IsAnimatedProperty, value);
     }
 
-    private static void OnSourcePathChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    private static void OnImagePropertyChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
         if (d is AnimatedImage img)
         {
             img.Cleanup();
-            if (e.NewValue is string path && !string.IsNullOrEmpty(path))
+            if (!string.IsNullOrEmpty(img.SourcePath))
             {
-                img.LoadGif(path);
+                img.LoadGif(img.SourcePath);
             }
         }
     }
@@ -92,7 +92,7 @@ namespace GIFlet;
         }
         catch (Exception ex)
         {
-            // Remove error catching
+            MessageBox.Show($"Error loading image: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
 
@@ -103,11 +103,8 @@ namespace GIFlet;
         _currentFrame = (_currentFrame + 1) % _decoder.Frames.Count;
         var frame = _decoder.Frames[_currentFrame];
         
-        if (_wb == null || _wb.PixelWidth != frame.PixelWidth || _wb.PixelHeight != frame.PixelHeight)
-        {
-            _wb = new WriteableBitmap(frame);
-            Source = _wb;
-        }
+        _wb = new WriteableBitmap(frame);
+        Source = _wb;
         
         var duration = 100;
         var metadata = frame.Metadata as BitmapMetadata;
