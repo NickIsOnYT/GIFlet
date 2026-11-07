@@ -27,7 +27,7 @@ I'm not a programmer so this was fully made using [OpenCode](https://opencode.ai
 ## Requirements
 
 - Windows 10 or later
-- [.NET 10.0 Runtime](https://dotnet.microsoft.com/en-us/download/dotnet/10.0)
+- [.NET 10.0 Runtime/SDK](https://dotnet.microsoft.com/en-us/download/dotnet/10.0)
 - probably [FFMPEG](https://ffmpeg.org/download.html)
 
 ## Building
